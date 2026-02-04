@@ -147,6 +147,7 @@ export default function LeadDetailModal({
         date: new Date().toISOString().slice(0, 16),
     });
     const [savingActivity, setSavingActivity] = useState(false);
+    const [deleting, setDeleting] = useState(false);
 
     const getMemberName = (member: TeamMember) => {
         if (member.full_name) return member.full_name;
@@ -250,6 +251,23 @@ export default function LeadDetailModal({
             console.error('Error sending signal:', error);
         }
         setSendingStage(null);
+    };
+
+    const handleDelete = async () => {
+        if (!confirm('Lead wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.')) return;
+        setDeleting(true);
+        try {
+            const res = await fetch(`/api/leads/${lead.id}`, { method: 'DELETE' });
+            if (res.ok) {
+                onUpdate();
+            } else {
+                alert('Fehler beim Löschen');
+            }
+        } catch (error) {
+            console.error('Error deleting lead:', error);
+            alert('Fehler beim Löschen');
+        }
+        setDeleting(false);
     };
 
     // Parse raw_data for extra form fields
@@ -680,6 +698,23 @@ export default function LeadDetailModal({
                 {/* Footer */}
                 <div className="border-t border-gray-100 px-6 py-4 bg-gray-50/50">
                     <div className="flex gap-3">
+                        <button
+                            onClick={handleDelete}
+                            disabled={deleting}
+                            className="px-4 py-2.5 border border-red-200 text-red-600 rounded-xl text-sm font-medium hover:bg-red-50 disabled:opacity-50 transition-colors"
+                            title="Lead löschen"
+                        >
+                            {deleting ? (
+                                <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                                </svg>
+                            ) : (
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                            )}
+                        </button>
                         <button
                             onClick={onClose}
                             className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-600 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors"

@@ -164,3 +164,43 @@ export async function GET(
         );
     }
 }
+
+export async function DELETE(
+    request: NextRequest,
+    { params }: { params: Promise<{ id: string }> }
+) {
+    try {
+        const token = request.cookies.get('auth_token')?.value;
+        if (!token) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
+        const payload = verifyToken(token);
+        if (!payload) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
+        const { id } = await params;
+
+        // Delete related records first (activities, assignments, etc.)
+        await query('DELETE FROM lead_activities WHERE lead_id = $1', [id]);
+
+        // Delete the lead
+        const result = await queryOne<{ id: string }>(
+            'DELETE FROM leads WHERE id = $1 AND org_id = $2 RETURNING id',
+            [id, payload.orgId]
+        );
+
+        if (!result) {
+            return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
+        }
+
+        return NextResponse.json({ success: true });
+    } catch (error) {
+        console.error('Lead delete error:', error);
+        return NextResponse.json(
+            { error: 'Internal server error' },
+            { status: 500 }
+        );
+    }
+}
