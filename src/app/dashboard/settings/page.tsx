@@ -44,7 +44,7 @@ export default function SettingsPage() {
         }
 
         const redirectUri = encodeURIComponent(`${window.location.origin}/api/auth/meta/callback`);
-        const scope = encodeURIComponent('leads_retrieval,pages_show_list,pages_read_engagement,ads_management,ads_read');
+        const scope = encodeURIComponent('business_management,leads_retrieval,pages_show_list,pages_read_engagement,pages_manage_metadata,ads_management,ads_read');
 
         window.location.href = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${appId}&redirect_uri=${redirectUri}&scope=${scope}&response_type=code`;
     };
