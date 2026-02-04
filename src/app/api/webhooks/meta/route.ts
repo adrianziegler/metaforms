@@ -17,12 +17,19 @@ export async function GET(request: NextRequest) {
     const token = searchParams.get('hub.verify_token');
     const challenge = searchParams.get('hub.challenge');
 
+    console.log('Webhook verification attempt:', { mode, token, challenge, expected: process.env.WEBHOOK_SECRET });
+
     if (mode === 'subscribe' && token === process.env.WEBHOOK_SECRET) {
-        console.log('Webhook verified');
-        return new NextResponse(challenge, { status: 200 });
+        console.log('Webhook verified successfully');
+        // Return challenge as plain text with explicit Content-Type
+        return new Response(challenge, {
+            status: 200,
+            headers: { 'Content-Type': 'text/plain' },
+        });
     }
 
-    return new NextResponse('Forbidden', { status: 403 });
+    console.log('Webhook verification failed - token mismatch');
+    return new Response('Forbidden', { status: 403 });
 }
 
 // Handle incoming lead data (POST request from Meta)
