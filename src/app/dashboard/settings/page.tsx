@@ -17,13 +17,48 @@ export default function SettingsPage() {
     const [loading, setLoading] = useState(true);
     const [webhookUrl, setWebhookUrl] = useState('');
     const [activeTab, setActiveTab] = useState<'general' | 'email' | 'branding' | 'meta-guide'>('general');
+    const [notifyNewLead, setNotifyNewLead] = useState(true);
 
     useEffect(() => {
         if (typeof window !== 'undefined') {
             setWebhookUrl(`${window.location.origin}/api/webhooks/meta`);
         }
         fetchConnection();
+        fetchNotificationSettings();
     }, []);
+
+    const fetchNotificationSettings = async () => {
+        try {
+            const res = await fetch('/api/settings/notifications');
+            if (res.ok) {
+                const data = await res.json();
+                setNotifyNewLead(data.notifyNewLead ?? true);
+            }
+        } catch (error) {
+            console.error('Error fetching notification settings:', error);
+        }
+    };
+
+    const handleToggleNotifyNewLead = async () => {
+        const newValue = !notifyNewLead;
+        setNotifyNewLead(newValue);
+        try {
+            const res = await fetch('/api/settings/notifications', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ notifyNewLead: newValue }),
+            });
+            if (res.ok) {
+                toast.success(newValue ? 'Admin-Benachrichtigungen aktiviert' : 'Admin-Benachrichtigungen deaktiviert');
+            } else {
+                setNotifyNewLead(!newValue); // Revert on error
+                toast.error('Fehler beim Speichern');
+            }
+        } catch {
+            setNotifyNewLead(!newValue);
+            toast.error('Fehler beim Speichern');
+        }
+    };
 
     const fetchConnection = async () => {
         try {
@@ -220,7 +255,28 @@ export default function SettingsPage() {
                                 <PushNotificationToggle />
                             </div>
 
-                            {/* Email */}
+                            {/* Email bei neuem Lead (Admin) */}
+                            <div className="flex items-center justify-between p-6">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
+                                        <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <h4 className="font-medium text-gray-900">E-Mail bei neuem Lead</h4>
+                                        <p className="text-sm text-gray-500">Admin wird per E-Mail informiert wenn Lead eingeht</p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={handleToggleNotifyNewLead}
+                                    className={`relative w-11 h-6 rounded-full transition-colors ${notifyNewLead ? 'bg-[#0052FF]' : 'bg-gray-300'}`}
+                                >
+                                    <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${notifyNewLead ? 'translate-x-5' : ''}`} />
+                                </button>
+                            </div>
+
+                            {/* Email bei Zuweisung (Mitarbeiter) */}
                             <div className="flex items-center justify-between p-6">
                                 <div className="flex items-center gap-4">
                                     <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
@@ -229,8 +285,8 @@ export default function SettingsPage() {
                                         </svg>
                                     </div>
                                     <div>
-                                        <h4 className="font-medium text-gray-900">E-Mail Benachrichtigungen</h4>
-                                        <p className="text-sm text-gray-500">Bei Lead-Zuweisung mit Bewertungs-Buttons</p>
+                                        <h4 className="font-medium text-gray-900">E-Mail bei Lead-Zuweisung</h4>
+                                        <p className="text-sm text-gray-500">Mitarbeiter erhalt E-Mail mit Bewertungs-Buttons</p>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-3">

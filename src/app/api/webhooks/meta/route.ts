@@ -3,11 +3,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query, queryOne } from '@/lib/db';
 import { getLeadDetails, getFormDetails } from '@/lib/meta-api';
 import { sendAutoMessages } from '@/lib/auto-message';
+import { sendNewLeadNotification } from '@/lib/email';
 
 interface MetaConnection {
     org_id: string;
     access_token: string;
     page_id: string;
+}
+
+interface OrgNotifySettings {
+    notify_new_lead: boolean;
 }
 
 // Webhook verification (GET request from Meta)
@@ -161,6 +166,36 @@ async function processLead(
             }
         } catch (autoMsgError) {
             console.error('Auto-message sending failed (non-blocking):', autoMsgError);
+        }
+
+        // Send notification to org admin(s) about new lead
+        try {
+            const orgSettings = await queryOne<OrgNotifySettings>(
+                'SELECT notify_new_lead FROM organizations WHERE id = $1',
+                [connection.org_id]
+            );
+
+            // Default to true if column doesn't exist or is null
+            if (orgSettings?.notify_new_lead !== false) {
+                // Get admin users for this org
+                const admins = await query<{ email: string }>(
+                    "SELECT email FROM users WHERE org_id = $1 AND role = 'admin'",
+                    [connection.org_id]
+                );
+
+                for (const admin of admins) {
+                    await sendNewLeadNotification(admin.email, {
+                        id: leadgenId,
+                        fullName,
+                        email,
+                        phone,
+                        formName,
+                    });
+                    console.log('[PROCESS] Admin notification sent to:', admin.email);
+                }
+            }
+        } catch (notifyError) {
+            console.error('Admin notification failed (non-blocking):', notifyError);
         }
     } catch (error) {
         console.error('Failed to process lead:', error);
