@@ -237,6 +237,29 @@ export async function runMigrations() {
     // Trigger column for auto-message templates (new_lead = on form submission, lead_assigned = on assignment)
     await pool.query(`ALTER TABLE auto_message_templates ADD COLUMN IF NOT EXISTS trigger VARCHAR(30) DEFAULT 'new_lead'`);
 
+    // Branding presets table (reusable branding for email templates)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS branding_presets (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        name VARCHAR(255) NOT NULL,
+        logo_url TEXT,
+        company_name VARCHAR(255),
+        primary_color VARCHAR(10) DEFAULT '#0052FF',
+        footer_text VARCHAR(500),
+        is_default BOOLEAN DEFAULT false,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      )
+    `);
+
+    // Link branding preset to auto-message templates
+    await pool.query(`ALTER TABLE auto_message_templates ADD COLUMN IF NOT EXISTS branding_preset_id UUID REFERENCES branding_presets(id) ON DELETE SET NULL`);
+
+    // Notification settings for org admins
+    await pool.query(`ALTER TABLE organizations ADD COLUMN IF NOT EXISTS notify_new_lead BOOLEAN DEFAULT true`);
+    await pool.query(`ALTER TABLE organizations ADD COLUMN IF NOT EXISTS notify_lead_assigned BOOLEAN DEFAULT true`);
+
     // Indexes
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_leads_org_id ON leads(org_id)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_leads_status ON leads(status)`);
@@ -251,6 +274,7 @@ export async function runMigrations() {
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_auto_message_templates_org ON auto_message_templates(org_id)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_auto_message_logs_org ON auto_message_logs(org_id)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_auto_message_logs_lead ON auto_message_logs(lead_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_branding_presets_org ON branding_presets(org_id)`);
 
     console.log('Database migrations completed successfully!');
   } catch (error) {

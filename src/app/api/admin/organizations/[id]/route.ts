@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
-import { query } from '@/lib/db';
+import { query, queryOne } from '@/lib/db';
 import { verifyToken } from '@/lib/auth';
 import { cookies } from 'next/headers';
 
 export async function PATCH(
     request: Request,
-    { params }: { params: Promise<{ id: string }> } // Params are promise in newer Next.js or just object? In App Router it's object or promise depending on version. Usually params are available. Actually in Next 15 params is promise, in 14 it is object. Assuming 14/15 safe interaction.
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
         const { id } = await params;
@@ -18,17 +18,46 @@ export async function PATCH(
         }
 
         const body = await request.json();
-        const { status } = body;
+        const { status, adminEmail } = body;
 
-        const validStatuses = ['active', 'inactive', 'pending_approval', 'trial'];
-        if (!validStatuses.includes(status)) {
-            return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
+        // Update status if provided
+        if (status) {
+            const validStatuses = ['active', 'inactive', 'pending_approval', 'trial'];
+            if (!validStatuses.includes(status)) {
+                return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
+            }
+
+            await query(
+                'UPDATE organizations SET subscription_status = $1, updated_at = NOW() WHERE id = $2',
+                [status, id]
+            );
         }
 
-        await query(
-            'UPDATE organizations SET subscription_status = $1, updated_at = NOW() WHERE id = $2',
-            [status, id]
-        );
+        // Update admin email if provided
+        if (adminEmail) {
+            // Find the admin user (first user created for this org)
+            const adminUser = await queryOne<{ id: string }>(
+                'SELECT id FROM users WHERE org_id = $1 ORDER BY created_at ASC LIMIT 1',
+                [id]
+            );
+
+            if (adminUser) {
+                // Check if email is already used by another user
+                const existingUser = await queryOne<{ id: string }>(
+                    'SELECT id FROM users WHERE email = $1 AND id != $2',
+                    [adminEmail, adminUser.id]
+                );
+
+                if (existingUser) {
+                    return NextResponse.json({ error: 'E-Mail bereits vergeben' }, { status: 400 });
+                }
+
+                await query(
+                    'UPDATE users SET email = $1, updated_at = NOW() WHERE id = $2',
+                    [adminEmail, adminUser.id]
+                );
+            }
+        }
 
         return NextResponse.json({ success: true });
     } catch (error) {
