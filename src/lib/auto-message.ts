@@ -14,6 +14,22 @@ interface AutoMessageTemplate {
     sender_name: string | null;
     content: EmailContent | WhatsAppContent;
     is_active: boolean;
+    branding_preset_id: string | null;
+}
+
+interface BrandingPreset {
+    id: string;
+    logo_url: string | null;
+    company_name: string | null;
+    primary_color: string;
+    footer_text: string | null;
+}
+
+interface EmailBranding {
+    logoUrl: string | null;
+    companyName: string | null;
+    primaryColor: string;
+    footerText: string | null;
 }
 
 interface EmailContent {
@@ -108,13 +124,15 @@ function blocksToHtml(blocks: EmailBlock[], primaryColor: string): string {
 /**
  * Wrap email content in a professional email template
  */
-function wrapInEmailTemplate(bodyHtml: string, settings: OrgSettings): string {
-    const color = settings.branding_primary_color || '#0052FF';
-    const companyName = settings.branding_company_name || 'outrnk';
+function wrapInEmailTemplate(bodyHtml: string, branding: EmailBranding): string {
+    const color = branding.primaryColor || '#0052FF';
+    const companyName = branding.companyName || 'outrnk';
 
-    const headerContent = settings.branding_logo_url
-        ? `<img src="${settings.branding_logo_url}" alt="Logo" style="max-height: 36px; max-width: 180px; object-fit: contain;">`
+    const headerContent = branding.logoUrl
+        ? `<img src="${branding.logoUrl}" alt="Logo" style="max-height: 36px; max-width: 180px; object-fit: contain;">`
         : `<span style="font-size: 20px; font-weight: 700; color: #111827;">${companyName}<span style="color: ${color};">.</span></span>`;
+
+    const footerText = branding.footerText || branding.companyName || 'outrnk. Leads';
 
     return `<!DOCTYPE html>
 <html>
@@ -140,7 +158,7 @@ function wrapInEmailTemplate(bodyHtml: string, settings: OrgSettings): string {
           <tr>
             <td style="padding: 20px 32px; background-color: #f9fafb; border-top: 1px solid #e5e7eb;">
               <p style="margin: 0; color: #9ca3af; font-size: 12px; text-align: center;">
-                ${settings.branding_company_name || 'outrnk. Leads'}
+                ${footerText}
               </p>
             </td>
           </tr>
@@ -193,9 +211,35 @@ async function sendAutoEmail(
     }
 
     try {
+        // Get branding - use preset if available, otherwise org settings
+        let branding: EmailBranding = {
+            logoUrl: settings.branding_logo_url,
+            companyName: settings.branding_company_name,
+            primaryColor: settings.branding_primary_color || '#0052FF',
+            footerText: null,
+        };
+
+        if (template.branding_preset_id) {
+            try {
+                const preset = await queryOne<BrandingPreset>(
+                    'SELECT * FROM branding_presets WHERE id = $1',
+                    [template.branding_preset_id]
+                );
+                if (preset) {
+                    branding = {
+                        logoUrl: preset.logo_url,
+                        companyName: preset.company_name,
+                        primaryColor: preset.primary_color || '#0052FF',
+                        footerText: preset.footer_text,
+                    };
+                }
+            } catch (e) {
+                console.error('[AUTO-EMAIL] Failed to load branding preset:', e);
+            }
+        }
+
         const content = template.content as EmailContent;
-        const primaryColor = settings.branding_primary_color || '#0052FF';
-        const orgName = settings.branding_company_name || null;
+        const orgName = branding.companyName || null;
 
         // Build email body from blocks with variable replacement
         const bodyBlocks = content.blocks.map(block => ({
@@ -204,10 +248,10 @@ async function sendAutoEmail(
             url: block.url ? replaceVariables(block.url, lead, orgName) : block.url,
         }));
 
-        const bodyHtml = blocksToHtml(bodyBlocks, primaryColor);
-        const html = wrapInEmailTemplate(bodyHtml, settings);
+        const bodyHtml = blocksToHtml(bodyBlocks, branding.primaryColor);
+        const html = wrapInEmailTemplate(bodyHtml, branding);
         const subject = replaceVariables(template.subject || 'Nachricht', lead, orgName);
-        const senderName = template.sender_name || settings.branding_company_name || 'outrnk Leads';
+        const senderName = template.sender_name || branding.companyName || 'outrnk Leads';
 
         const { error } = await resendConfig.client.emails.send({
             from: `${senderName} <${resendConfig.fromEmail}>`,

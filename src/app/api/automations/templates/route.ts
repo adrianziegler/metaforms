@@ -14,6 +14,7 @@ interface AutoMessageTemplate {
     sender_name: string | null;
     content: unknown;
     is_active: boolean;
+    branding_preset_id: string | null;
     created_at: string;
     updated_at: string;
 }
@@ -66,7 +67,7 @@ export async function POST(request: NextRequest) {
         if (!payload) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
         const body = await request.json();
-        const { name, type, trigger, formId, formName, subject, senderName, content, isActive } = body;
+        const { name, type, trigger, formId, formName, subject, senderName, content, isActive, brandingPresetId } = body;
 
         if (!name || !type || !content) {
             return NextResponse.json({ error: 'Name, Typ und Inhalt sind erforderlich' }, { status: 400 });
@@ -81,8 +82,8 @@ export async function POST(request: NextRequest) {
         let template: AutoMessageTemplate | null = null;
         try {
             template = await queryOne<AutoMessageTemplate>(
-                `INSERT INTO auto_message_templates (org_id, name, type, trigger, form_id, form_name, subject, sender_name, content, is_active)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                `INSERT INTO auto_message_templates (org_id, name, type, trigger, form_id, form_name, subject, sender_name, content, is_active, branding_preset_id)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
                  RETURNING *`,
                 [
                     payload.orgId,
@@ -95,6 +96,7 @@ export async function POST(request: NextRequest) {
                     senderName || null,
                     JSON.stringify(content),
                     isActive !== false,
+                    brandingPresetId || null,
                 ]
             );
         } catch (dbError: unknown) {
@@ -125,7 +127,7 @@ export async function PATCH(request: NextRequest) {
         if (!payload) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
         const body = await request.json();
-        const { id, name, trigger, formId, formName, subject, senderName, content, isActive } = body;
+        const { id, name, trigger, formId, formName, subject, senderName, content, isActive, brandingPresetId } = body;
 
         if (!id) {
             return NextResponse.json({ error: 'Template ID erforderlich' }, { status: 400 });
@@ -160,6 +162,7 @@ export async function PATCH(request: NextRequest) {
         if (senderName !== undefined) { updates.push(`sender_name = $${idx++}`); values.push(senderName); }
         if (content !== undefined) { updates.push(`content = $${idx++}`); values.push(JSON.stringify(content)); }
         if (isActive !== undefined) { updates.push(`is_active = $${idx++}`); values.push(isActive); }
+        if (brandingPresetId !== undefined) { updates.push(`branding_preset_id = $${idx++}`); values.push(brandingPresetId || null); }
 
         updates.push(`updated_at = NOW()`);
         values.push(id);

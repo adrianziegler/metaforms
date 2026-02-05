@@ -14,7 +14,7 @@ interface BrandingPreset {
     created_at: string;
 }
 
-// GET - List all branding presets for org
+// GET - List all branding presets for the organization
 export async function GET(request: NextRequest) {
     try {
         const token = request.cookies.get('auth_token')?.value;
@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
         let presets: BrandingPreset[] = [];
         try {
             presets = await query<BrandingPreset>(
-                `SELECT * FROM branding_presets WHERE org_id = $1 ORDER BY is_default DESC, created_at DESC`,
+                'SELECT * FROM branding_presets WHERE org_id = $1 ORDER BY is_default DESC, created_at DESC',
                 [payload.orgId]
             );
         } catch (dbError: unknown) {
@@ -45,13 +45,13 @@ export async function GET(request: NextRequest) {
     } catch (error) {
         console.error('Get branding presets error:', error);
         return NextResponse.json(
-            { error: 'Fehler beim Laden' },
+            { error: error instanceof Error ? error.message : 'Error' },
             { status: 500 }
         );
     }
 }
 
-// POST - Create new branding preset
+// POST - Create a new branding preset
 export async function POST(request: NextRequest) {
     try {
         const token = request.cookies.get('auth_token')?.value;
@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Name ist erforderlich' }, { status: 400 });
         }
 
-        // If setting as default, unset other defaults
+        // If this is set as default, unset other defaults first
         if (isDefault) {
             await query(
                 'UPDATE branding_presets SET is_default = false WHERE org_id = $1',
@@ -79,9 +79,7 @@ export async function POST(request: NextRequest) {
         }
 
         const preset = await queryOne<BrandingPreset>(
-            `INSERT INTO branding_presets (org_id, name, logo_url, company_name, primary_color, footer_text, is_default)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)
-             RETURNING *`,
+            'INSERT INTO branding_presets (org_id, name, logo_url, company_name, primary_color, footer_text, is_default) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
             [
                 payload.orgId,
                 name.trim(),
@@ -97,13 +95,13 @@ export async function POST(request: NextRequest) {
     } catch (error) {
         console.error('Create branding preset error:', error);
         return NextResponse.json(
-            { error: 'Fehler beim Erstellen' },
+            { error: error instanceof Error ? error.message : 'Error' },
             { status: 500 }
         );
     }
 }
 
-// PATCH - Update branding preset
+// PATCH - Update a branding preset
 export async function PATCH(request: NextRequest) {
     try {
         const token = request.cookies.get('auth_token')?.value;
@@ -122,58 +120,31 @@ export async function PATCH(request: NextRequest) {
             return NextResponse.json({ error: 'ID ist erforderlich' }, { status: 400 });
         }
 
-        // Verify ownership
-        const existing = await queryOne<{ id: string }>(
-            'SELECT id FROM branding_presets WHERE id = $1 AND org_id = $2',
-            [id, payload.orgId]
-        );
-
-        if (!existing) {
-            return NextResponse.json({ error: 'Preset nicht gefunden' }, { status: 404 });
-        }
-
-        // If setting as default, unset other defaults
+        // If setting as default, unset others first
         if (isDefault) {
-            await query(
-                'UPDATE branding_presets SET is_default = false WHERE org_id = $1 AND id != $2',
-                [payload.orgId, id]
-            );
+            await query('UPDATE branding_presets SET is_default = false WHERE org_id = $1', [payload.orgId]);
         }
 
         const preset = await queryOne<BrandingPreset>(
-            `UPDATE branding_presets
-             SET name = COALESCE($1, name),
-                 logo_url = $2,
-                 company_name = $3,
-                 primary_color = COALESCE($4, primary_color),
-                 footer_text = $5,
-                 is_default = COALESCE($6, is_default),
-                 updated_at = NOW()
-             WHERE id = $7 AND org_id = $8
-             RETURNING *`,
-            [
-                name?.trim() || null,
-                logoUrl,
-                companyName,
-                primaryColor,
-                footerText,
-                isDefault,
-                id,
-                payload.orgId,
-            ]
+            'UPDATE branding_presets SET name = COALESCE($1, name), logo_url = $2, company_name = $3, primary_color = COALESCE($4, primary_color), footer_text = $5, is_default = COALESCE($6, is_default), updated_at = NOW() WHERE id = $7 AND org_id = $8 RETURNING *',
+            [name, logoUrl, companyName, primaryColor, footerText, isDefault, id, payload.orgId]
         );
+
+        if (!preset) {
+            return NextResponse.json({ error: 'Preset nicht gefunden' }, { status: 404 });
+        }
 
         return NextResponse.json({ preset });
     } catch (error) {
         console.error('Update branding preset error:', error);
         return NextResponse.json(
-            { error: 'Fehler beim Aktualisieren' },
+            { error: error instanceof Error ? error.message : 'Error' },
             { status: 500 }
         );
     }
 }
 
-// DELETE - Delete branding preset
+// DELETE - Delete a branding preset
 export async function DELETE(request: NextRequest) {
     try {
         const token = request.cookies.get('auth_token')?.value;
@@ -186,12 +157,14 @@ export async function DELETE(request: NextRequest) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const { searchParams } = new URL(request.url);
-        const id = searchParams.get('id');
+        const { id } = await request.json();
 
         if (!id) {
             return NextResponse.json({ error: 'ID ist erforderlich' }, { status: 400 });
         }
+
+        // First, unlink any templates using this preset
+        await query('UPDATE auto_message_templates SET branding_preset_id = NULL WHERE branding_preset_id = $1', [id]);
 
         const result = await queryOne<{ id: string }>(
             'DELETE FROM branding_presets WHERE id = $1 AND org_id = $2 RETURNING id',
@@ -206,7 +179,7 @@ export async function DELETE(request: NextRequest) {
     } catch (error) {
         console.error('Delete branding preset error:', error);
         return NextResponse.json(
-            { error: 'Fehler beim Löschen' },
+            { error: error instanceof Error ? error.message : 'Error' },
             { status: 500 }
         );
     }

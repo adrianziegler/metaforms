@@ -23,7 +23,18 @@ interface Template {
     sender_name: string | null;
     content: { blocks?: EmailBlock[]; message?: string };
     is_active: boolean;
+    branding_preset_id: string | null;
     created_at: string;
+}
+
+interface BrandingPreset {
+    id: string;
+    name: string;
+    logo_url: string | null;
+    company_name: string | null;
+    primary_color: string;
+    footer_text: string | null;
+    is_default: boolean;
 }
 
 interface FormOption {
@@ -140,6 +151,7 @@ export default function AutomationsPage() {
     });
     const [logs, setLogs] = useState<LogEntry[]>([]);
     const [branding, setBranding] = useState<Branding>({ companyName: null, logoUrl: null, primaryColor: null });
+    const [brandingPresets, setBrandingPresets] = useState<BrandingPreset[]>([]);
     const [loading, setLoading] = useState(true);
     const [activeView, setActiveView] = useState<'templates' | 'logs' | 'settings'>('templates');
     const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
@@ -152,6 +164,11 @@ export default function AutomationsPage() {
     // Resend settings form
     const [resendKeyInput, setResendKeyInput] = useState('');
     const [resendEmailInput, setResendEmailInput] = useState('');
+
+    // Branding preset form
+    const [editingPreset, setEditingPreset] = useState<BrandingPreset | null>(null);
+    const [presetForm, setPresetForm] = useState({ name: '', logoUrl: '', companyName: '', primaryColor: '#0052FF', footerText: '', isDefault: false });
+    const [savingPreset, setSavingPreset] = useState(false);
 
     const fetchAll = useCallback(async () => {
         try {
@@ -176,6 +193,16 @@ export default function AutomationsPage() {
                 }
             } catch (brandingErr) {
                 console.error('Branding fetch error:', brandingErr);
+            }
+            // Fetch branding presets
+            try {
+                const pRes = await fetch('/api/automations/branding-presets');
+                if (pRes.ok) {
+                    const pData = await pRes.json();
+                    setBrandingPresets(pData.presets || []);
+                }
+            } catch (presetsErr) {
+                console.error('Branding presets fetch error:', presetsErr);
             }
         } catch (err) {
             console.error('Fetch error:', err);
@@ -251,6 +278,70 @@ export default function AutomationsPage() {
                 fetchAll();
             }
         } catch { toast.error('Fehler'); }
+    };
+
+    const handleSavePreset = async () => {
+        if (!presetForm.name.trim()) {
+            toast.error('Name ist erforderlich');
+            return;
+        }
+        setSavingPreset(true);
+        try {
+            const method = editingPreset ? 'PATCH' : 'POST';
+            const body = editingPreset
+                ? { id: editingPreset.id, ...presetForm }
+                : presetForm;
+            const res = await fetch('/api/automations/branding-presets', {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            if (res.ok) {
+                toast.success(editingPreset ? 'Preset aktualisiert' : 'Preset erstellt');
+                setEditingPreset(null);
+                setPresetForm({ name: '', logoUrl: '', companyName: '', primaryColor: '#0052FF', footerText: '', isDefault: false });
+                fetchAll();
+            } else {
+                const data = await res.json();
+                toast.error(data.error || 'Fehler');
+            }
+        } catch { toast.error('Fehler'); }
+        setSavingPreset(false);
+    };
+
+    const handleEditPreset = (preset: BrandingPreset) => {
+        setEditingPreset(preset);
+        setPresetForm({
+            name: preset.name,
+            logoUrl: preset.logo_url || '',
+            companyName: preset.company_name || '',
+            primaryColor: preset.primary_color,
+            footerText: preset.footer_text || '',
+            isDefault: preset.is_default,
+        });
+    };
+
+    const handleDeletePreset = async (id: string) => {
+        if (!confirm('Branding-Preset wirklich loschen?')) return;
+        try {
+            const res = await fetch('/api/automations/branding-presets', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id }),
+            });
+            if (res.ok) {
+                toast.success('Preset geloscht');
+                fetchAll();
+            } else {
+                const data = await res.json();
+                toast.error(data.error || 'Fehler');
+            }
+        } catch { toast.error('Fehler'); }
+    };
+
+    const handleCancelPresetEdit = () => {
+        setEditingPreset(null);
+        setPresetForm({ name: '', logoUrl: '', companyName: '', primaryColor: '#0052FF', footerText: '', isDefault: false });
     };
 
     const handleToggleTemplate = async (id: string, isActive: boolean) => {
@@ -348,6 +439,7 @@ export default function AutomationsPage() {
                     senderName: template.sender_name,
                     content: template.content,
                     isActive: template.is_active,
+                    brandingPresetId: template.branding_preset_id,
                 }),
             });
             if (res.ok) {
@@ -379,6 +471,7 @@ export default function AutomationsPage() {
                 leadVariables={LEAD_VARIABLES}
                 assigneeVariables={ASSIGNEE_VARIABLES}
                 branding={branding}
+                brandingPresets={brandingPresets}
                 saving={saving}
                 onSave={(t) => { handleSaveTemplate(t); setEditingTemplate(t); }}
                 onClose={() => { setEditingTemplate(null); fetchAll(); }}
@@ -670,6 +763,182 @@ export default function AutomationsPage() {
                             </div>
                         )}
                     </div>
+
+                    {/* Branding Presets */}
+                    <div className="bg-white rounded-xl border border-gray-200 p-6">
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
+                                    <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" /></svg>
+                                </div>
+                                <div>
+                                    <h3 className="font-semibold text-gray-900">Branding-Presets</h3>
+                                    <p className="text-sm text-gray-500">Verschiedene Designs fur deine E-Mail Templates</p>
+                                </div>
+                            </div>
+                            {!editingPreset && brandingPresets.length > 0 && (
+                                <button
+                                    onClick={() => setEditingPreset({ id: '', name: '', logo_url: null, company_name: null, primary_color: '#0052FF', footer_text: null, is_default: false })}
+                                    className="px-3 py-1.5 bg-[#0052FF] text-white rounded-lg text-sm font-medium hover:bg-[#0047E1] transition-colors flex items-center gap-1"
+                                >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                                    Neues Preset
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Preset Form */}
+                        {(editingPreset || brandingPresets.length === 0) && (
+                            <div className="bg-gray-50 rounded-lg p-4 mb-4 space-y-3">
+                                <h4 className="text-sm font-medium text-gray-700">
+                                    {editingPreset?.id ? 'Preset bearbeiten' : 'Neues Branding-Preset erstellen'}
+                                </h4>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-xs font-medium text-gray-500 block mb-1">Name *</label>
+                                        <input
+                                            type="text"
+                                            value={presetForm.name}
+                                            onChange={e => setPresetForm({ ...presetForm, name: e.target.value })}
+                                            placeholder="z.B. Firma A Branding"
+                                            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#0052FF] outline-none"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-medium text-gray-500 block mb-1">Firmenname</label>
+                                        <input
+                                            type="text"
+                                            value={presetForm.companyName}
+                                            onChange={e => setPresetForm({ ...presetForm, companyName: e.target.value })}
+                                            placeholder="z.B. Meine Firma GmbH"
+                                            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#0052FF] outline-none"
+                                        />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-medium text-gray-500 block mb-1">Logo-URL</label>
+                                    <input
+                                        type="url"
+                                        value={presetForm.logoUrl}
+                                        onChange={e => setPresetForm({ ...presetForm, logoUrl: e.target.value })}
+                                        placeholder="https://..."
+                                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#0052FF] outline-none font-mono"
+                                    />
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-xs font-medium text-gray-500 block mb-1">Primare Farbe</label>
+                                        <div className="flex gap-2">
+                                            <input
+                                                type="color"
+                                                value={presetForm.primaryColor}
+                                                onChange={e => setPresetForm({ ...presetForm, primaryColor: e.target.value })}
+                                                className="w-10 h-10 rounded border border-gray-200 cursor-pointer"
+                                            />
+                                            <input
+                                                type="text"
+                                                value={presetForm.primaryColor}
+                                                onChange={e => setPresetForm({ ...presetForm, primaryColor: e.target.value })}
+                                                className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#0052FF] outline-none font-mono"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-medium text-gray-500 block mb-1">Footer-Text</label>
+                                        <input
+                                            type="text"
+                                            value={presetForm.footerText}
+                                            onChange={e => setPresetForm({ ...presetForm, footerText: e.target.value })}
+                                            placeholder="z.B. © 2024 Meine Firma"
+                                            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#0052FF] outline-none"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="checkbox"
+                                        id="isDefault"
+                                        checked={presetForm.isDefault}
+                                        onChange={e => setPresetForm({ ...presetForm, isDefault: e.target.checked })}
+                                        className="w-4 h-4 text-[#0052FF] border-gray-300 rounded focus:ring-[#0052FF]"
+                                    />
+                                    <label htmlFor="isDefault" className="text-sm text-gray-600">Als Standard-Preset verwenden</label>
+                                </div>
+                                <div className="flex gap-2 pt-2">
+                                    <button
+                                        onClick={handleSavePreset}
+                                        disabled={savingPreset || !presetForm.name.trim()}
+                                        className="px-4 py-2 bg-[#0052FF] text-white rounded-lg text-sm font-medium hover:bg-[#0047E1] disabled:opacity-50 transition-colors"
+                                    >
+                                        {savingPreset ? 'Speichert...' : editingPreset?.id ? 'Aktualisieren' : 'Erstellen'}
+                                    </button>
+                                    {editingPreset?.id && (
+                                        <button
+                                            onClick={handleCancelPresetEdit}
+                                            className="px-4 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
+                                        >
+                                            Abbrechen
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Existing Presets List */}
+                        {brandingPresets.length > 0 && (
+                            <div className="space-y-2">
+                                {brandingPresets.map(preset => (
+                                    <div key={preset.id} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                                        <div className="flex items-center gap-3">
+                                            <div
+                                                className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold"
+                                                style={{ backgroundColor: preset.primary_color }}
+                                            >
+                                                {preset.logo_url ? (
+                                                    <img src={preset.logo_url} alt="" className="w-6 h-6 object-contain" />
+                                                ) : (
+                                                    preset.name.charAt(0).toUpperCase()
+                                                )}
+                                            </div>
+                                            <div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-medium text-gray-900 text-sm">{preset.name}</span>
+                                                    {preset.is_default && (
+                                                        <span className="text-[10px] px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded font-medium">Default</span>
+                                                    )}
+                                                </div>
+                                                <p className="text-xs text-gray-500">
+                                                    {preset.company_name || 'Kein Firmenname'} • {preset.primary_color}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                            <button
+                                                onClick={() => handleEditPreset(preset)}
+                                                className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-gray-500 hover:text-gray-700"
+                                                title="Bearbeiten"
+                                            >
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                            </button>
+                                            <button
+                                                onClick={() => handleDeletePreset(preset.id)}
+                                                className="p-2 hover:bg-red-50 rounded-lg transition-colors text-gray-400 hover:text-red-600"
+                                                title="Loschen"
+                                            >
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {brandingPresets.length === 0 && !editingPreset && (
+                            <div className="text-center py-6 text-gray-500 text-sm">
+                                Noch keine Branding-Presets vorhanden.
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
 
@@ -740,18 +1009,26 @@ export default function AutomationsPage() {
 // ==========================================================================
 // Template Editor Component
 // ==========================================================================
-function TemplateEditor({ template, forms, leadVariables, assigneeVariables, branding, saving, onSave, onClose }: {
+function TemplateEditor({ template, forms, leadVariables, assigneeVariables, branding, brandingPresets, saving, onSave, onClose }: {
     template: Template;
     forms: FormOption[];
     leadVariables: { key: string; label: string }[];
     assigneeVariables: { key: string; label: string }[];
     branding: Branding;
+    brandingPresets: BrandingPreset[];
     saving: boolean;
     onSave: (t: Template) => void;
     onClose: () => void;
 }) {
     const [t, setT] = useState<Template>(template);
     const [showPreview, setShowPreview] = useState(false);
+
+    // Get effective branding for preview (from preset or org branding)
+    const selectedPreset = brandingPresets.find(p => p.id === t.branding_preset_id);
+    const effectiveBranding: Branding = selectedPreset
+        ? { companyName: selectedPreset.company_name, logoUrl: selectedPreset.logo_url, primaryColor: selectedPreset.primary_color }
+        : branding;
+    const footerText = selectedPreset?.footer_text || effectiveBranding.companyName || 'outrnk. Leads';
 
     // Parse content if string
     useEffect(() => {
@@ -917,6 +1194,24 @@ function TemplateEditor({ template, forms, leadVariables, assigneeVariables, bra
                                         className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#0052FF] outline-none"
                                         placeholder="z.B. Meine Firma" />
                                 </div>
+                                <div>
+                                    <label className="text-xs font-medium text-gray-500 block mb-1">Branding-Preset</label>
+                                    <select
+                                        value={t.branding_preset_id || ''}
+                                        onChange={e => setT({ ...t, branding_preset_id: e.target.value || null })}
+                                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#0052FF] outline-none"
+                                    >
+                                        <option value="">Standard (Org-Branding)</option>
+                                        {brandingPresets.map(p => (
+                                            <option key={p.id} value={p.id}>
+                                                {p.name}{p.is_default ? ' (Default)' : ''}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <p className="text-[10px] text-gray-400 mt-1">
+                                        Logo, Farbe & Footer fur diese E-Mail. Presets unter Einstellungen verwalten.
+                                    </p>
+                                </div>
                             </>
                         )}
 
@@ -1046,11 +1341,11 @@ function TemplateEditor({ template, forms, leadVariables, assigneeVariables, bra
                                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 max-w-[480px] mx-auto overflow-hidden">
                                     {/* Email Header */}
                                     <div className="p-5 border-b border-gray-200">
-                                        {branding.logoUrl ? (
-                                            <img src={branding.logoUrl} alt={branding.companyName || 'Logo'} className="h-8 object-contain" />
+                                        {effectiveBranding.logoUrl ? (
+                                            <img src={effectiveBranding.logoUrl} alt={effectiveBranding.companyName || 'Logo'} className="h-8 object-contain" />
                                         ) : (
                                             <span className="text-lg font-bold text-gray-900">
-                                                {branding.companyName || <>outrnk<span style={{ color: branding.primaryColor || '#0052FF' }}>.</span></>}
+                                                {effectiveBranding.companyName || <>outrnk<span style={{ color: effectiveBranding.primaryColor || '#0052FF' }}>.</span></>}
                                             </span>
                                         )}
                                     </div>
@@ -1060,17 +1355,17 @@ function TemplateEditor({ template, forms, leadVariables, assigneeVariables, bra
                                             <div key={block.id}>
                                                 {block.type === 'heading' && (
                                                     <h2 className="text-lg font-semibold text-gray-900 mb-3">
-                                                        {(block.text || '').replace(/\{\{first_name\}\}/g, 'Max').replace(/\{\{full_name\}\}/g, 'Max Mustermann').replace(/\{\{company_name\}\}/g, branding.companyName || 'Firma').replace(/\{\{assignee_name\}\}/g, 'Anna Muller').replace(/\{\{assignee_email\}\}/g, 'anna@firma.de')}
+                                                        {(block.text || '').replace(/\{\{first_name\}\}/g, 'Max').replace(/\{\{full_name\}\}/g, 'Max Mustermann').replace(/\{\{company_name\}\}/g, effectiveBranding.companyName || 'Firma').replace(/\{\{assignee_name\}\}/g, 'Anna Muller').replace(/\{\{assignee_email\}\}/g, 'anna@firma.de')}
                                                     </h2>
                                                 )}
                                                 {block.type === 'text' && (
                                                     <p className="text-sm text-gray-600 mb-3 whitespace-pre-line">
-                                                        {(block.text || '').replace(/\{\{first_name\}\}/g, 'Max').replace(/\{\{full_name\}\}/g, 'Max Mustermann').replace(/\{\{company_name\}\}/g, branding.companyName || 'Firma').replace(/\{\{assignee_name\}\}/g, 'Anna Muller').replace(/\{\{assignee_email\}\}/g, 'anna@firma.de')}
+                                                        {(block.text || '').replace(/\{\{first_name\}\}/g, 'Max').replace(/\{\{full_name\}\}/g, 'Max Mustermann').replace(/\{\{company_name\}\}/g, effectiveBranding.companyName || 'Firma').replace(/\{\{assignee_name\}\}/g, 'Anna Muller').replace(/\{\{assignee_email\}\}/g, 'anna@firma.de')}
                                                     </p>
                                                 )}
                                                 {block.type === 'button' && (
                                                     <div className="mb-3">
-                                                        <span className="inline-block px-5 py-2.5 text-white rounded-md text-sm font-medium" style={{ backgroundColor: branding.primaryColor || '#0052FF' }}>
+                                                        <span className="inline-block px-5 py-2.5 text-white rounded-md text-sm font-medium" style={{ backgroundColor: effectiveBranding.primaryColor || '#0052FF' }}>
                                                             {block.text || 'Button'}
                                                         </span>
                                                     </div>
@@ -1081,7 +1376,7 @@ function TemplateEditor({ template, forms, leadVariables, assigneeVariables, bra
                                     </div>
                                     {/* Email Footer */}
                                     <div className="p-4 bg-gray-50 border-t border-gray-200 text-center">
-                                        <p className="text-xs text-gray-400">{branding.companyName || 'outrnk. Leads'}</p>
+                                        <p className="text-xs text-gray-400">{footerText}</p>
                                     </div>
                                 </div>
                             </div>
@@ -1098,7 +1393,7 @@ function TemplateEditor({ template, forms, leadVariables, assigneeVariables, bra
                                                 .replace(/\{\{email\}\}/g, 'max@example.com')
                                                 .replace(/\{\{phone\}\}/g, '+49 123 456789')
                                                 .replace(/\{\{form_name\}\}/g, 'Kontaktformular')
-                                                .replace(/\{\{company_name\}\}/g, branding.companyName || 'Firma')
+                                                .replace(/\{\{company_name\}\}/g, effectiveBranding.companyName || 'Firma')
                                                 .replace(/\{\{assignee_name\}\}/g, 'Anna Muller')
                                                 .replace(/\{\{assignee_email\}\}/g, 'anna@firma.de')}
                                         </p>
