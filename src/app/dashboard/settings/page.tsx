@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
-import EmailTemplateEditor from '@/components/EmailTemplateEditor';
 import { toast } from 'sonner';
 
 interface MetaConnection {
@@ -16,7 +15,7 @@ export default function SettingsPage() {
     const [connection, setConnection] = useState<MetaConnection>({ connected: false });
     const [loading, setLoading] = useState(true);
     const [webhookUrl, setWebhookUrl] = useState('');
-    const [activeTab, setActiveTab] = useState<'general' | 'email' | 'branding' | 'meta-guide'>('general');
+    const [activeTab, setActiveTab] = useState<'general' | 'branding' | 'meta-guide'>('general');
     const [notifyNewLead, setNotifyNewLead] = useState(true);
 
     useEffect(() => {
@@ -114,16 +113,6 @@ export default function SettingsPage() {
                     }`}
                 >
                     Allgemein
-                </button>
-                <button
-                    onClick={() => setActiveTab('email')}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                        activeTab === 'email'
-                            ? 'bg-[#0052FF] text-white'
-                            : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                    }`}
-                >
-                    E-Mail Template
                 </button>
                 <button
                     onClick={() => setActiveTab('branding')}
@@ -293,12 +282,12 @@ export default function SettingsPage() {
                                     <span className="px-3 py-1.5 rounded-full bg-green-100 text-green-700 text-xs font-medium">
                                         Aktiv
                                     </span>
-                                    <button
-                                        onClick={() => setActiveTab('email')}
+                                    <Link
+                                        href="/dashboard/automations"
                                         className="text-sm text-[#0052FF] font-medium hover:underline"
                                     >
-                                        Anpassen
-                                    </button>
+                                        In Automationen anpassen
+                                    </Link>
                                 </div>
                             </div>
 
@@ -397,11 +386,6 @@ export default function SettingsPage() {
                         </div>
                     </div>
                 </>
-            ) : activeTab === 'email' ? (
-                /* Email Template Tab */
-                <div className="bg-white rounded-xl border border-gray-200 p-6">
-                    <EmailTemplateEditor />
-                </div>
             ) : activeTab === 'branding' ? (
                 /* Branding Tab */
                 <BrandingEditor />
