@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { queryOne, query } from '@/lib/db';
 import { verifyToken } from '@/lib/auth';
+import { subscribePageToLeadgen } from '@/lib/meta-api';
 
 interface TempOAuthData {
     user_access_token: string;
@@ -77,6 +78,15 @@ export async function POST(request: NextRequest) {
                  VALUES ($1, $2, $3, $4, $5, $6, $7)`,
                 [payload.orgId, selectedPage.access_token, 'admin', selectedPage.id, selectedPage.name, pixelId || null, expiresAt]
             );
+        }
+
+        // Subscribe page to leadgen webhooks
+        try {
+            await subscribePageToLeadgen(selectedPage.id, selectedPage.access_token);
+            console.log('[META-CONNECT] Page subscribed to leadgen:', selectedPage.id);
+        } catch (subscribeError) {
+            console.error('[META-CONNECT] Failed to subscribe to leadgen:', subscribeError);
+            // Don't fail the whole connection, but log the error
         }
 
         // Clean up temporary OAuth data
