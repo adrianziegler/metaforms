@@ -36,16 +36,20 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
+        console.log('[WEBHOOK] Received:', JSON.stringify(body, null, 2));
 
         // Process each entry
         for (const entry of body.entry || []) {
+            console.log('[WEBHOOK] Processing entry:', entry.id);
             for (const change of entry.changes || []) {
+                console.log('[WEBHOOK] Change field:', change.field);
                 if (change.field === 'leadgen') {
                     const leadgenId = change.value.leadgen_id;
                     const pageId = change.value.page_id;
                     const formId = change.value.form_id;
                     const adId = change.value.ad_id;
 
+                    console.log('[WEBHOOK] Lead received:', { leadgenId, pageId, formId, adId });
                     await processLead(leadgenId, pageId, formId, adId);
                 }
             }
@@ -53,7 +57,7 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json({ success: true });
     } catch (error) {
-        console.error('Webhook error:', error);
+        console.error('[WEBHOOK] Error:', error);
         return NextResponse.json(
             { error: 'Internal server error' },
             { status: 500 }
@@ -67,6 +71,7 @@ async function processLead(
     formId: string,
     adId?: string
 ) {
+    console.log('[PROCESS] Starting for lead:', leadgenId, 'page:', pageId);
     try {
         // Find the meta connection for this page
         const connection = await queryOne<MetaConnection>(
@@ -75,9 +80,15 @@ async function processLead(
         );
 
         if (!connection) {
-            console.error('No connection found for page:', pageId);
+            // Log all existing connections for debugging
+            const allConnections = await query<{ page_id: string; org_id: string }>(
+                'SELECT page_id, org_id FROM meta_connections'
+            );
+            console.error('[PROCESS] No connection found for page:', pageId);
+            console.error('[PROCESS] Available connections:', JSON.stringify(allConnections));
             return;
         }
+        console.log('[PROCESS] Found connection for org:', connection.org_id);
 
         // Check if lead already exists
         const existing = await queryOne<{ id: string }>(
@@ -91,7 +102,9 @@ async function processLead(
         }
 
         // Fetch lead details from Meta
+        console.log('[PROCESS] Fetching lead details from Meta...');
         const leadData = await getLeadDetails(leadgenId, connection.access_token);
+        console.log('[PROCESS] Lead data received:', JSON.stringify(leadData, null, 2));
 
         // Fetch form name from Meta
         let formName = `Form ${formId?.slice(-6) || 'Unknown'}`;
@@ -120,13 +133,14 @@ async function processLead(
         const phone = fieldMap['phone_number'] || fieldMap['phone'] || null;
 
         // Insert lead into database with form info
+        console.log('[PROCESS] Inserting lead into DB:', { orgId: connection.org_id, email, phone, fullName, formName });
         await query(
             `INSERT INTO leads (org_id, meta_lead_id, email, phone, full_name, raw_data, form_id, form_name, ad_id, status)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new')`,
             [connection.org_id, leadgenId, email, phone, fullName, JSON.stringify(fieldMap), formId, formName, adId || null]
         );
 
-        console.log('Lead saved successfully:', leadgenId, 'Form:', formName);
+        console.log('[PROCESS] ✅ Lead saved successfully:', leadgenId, 'Form:', formName);
 
         // Send auto-messages (email + WhatsApp) to the new lead
         try {
