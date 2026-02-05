@@ -277,11 +277,154 @@ const DEFAULT_TEMPLATE: EmailTemplate = {
 </html>`,
 };
 
+interface SimpleTemplateTexts {
+  subject: string;
+  greeting: string;
+  message: string;
+  ctaText?: string;
+  portalText?: string;
+}
+
+/**
+ * Generate HTML email from simple template texts
+ */
+function generateHtmlFromSimpleTexts(
+  texts: SimpleTemplateTexts,
+  branding: OrgBranding,
+  templateType: 'lead_assignment' | 'team_member_welcome'
+): string {
+  const color = branding.primaryColor || '#0052FF';
+  const companyName = branding.companyName || 'outrnk';
+  const footerText = branding.companyName || 'outrnk. Leads';
+
+  const headerContent = branding.logoUrl
+    ? `<img src="${branding.logoUrl}" alt="Logo" style="max-height: 36px; max-width: 180px; object-fit: contain;">`
+    : `<span style="font-size: 20px; font-weight: 700; color: #111827;">${companyName}<span style="color: ${color};">.</span></span>`;
+
+  const badgeText = templateType === 'lead_assignment' ? 'Neuer Lead' : 'Willkommen';
+  const badgeColor = templateType === 'lead_assignment' ? '#dbeafe' : '#dcfce7';
+  const badgeTextColor = templateType === 'lead_assignment' ? '#1d4ed8' : '#166534';
+
+  const leadDetailsSection = templateType === 'lead_assignment' ? `
+    <!-- Lead Details Card -->
+    <tr>
+      <td style="padding: 0 32px 24px;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
+          <tr><td style="padding: 16px;">
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr><td style="padding: 8px 0;"><span style="color: #9ca3af; font-size: 12px; display: block; margin-bottom: 2px;">Name</span><span style="color: #111827; font-size: 14px; font-weight: 500;">{{lead_name}}</span></td></tr>
+              <tr><td style="padding: 8px 0; border-top: 1px solid #e5e7eb;"><span style="color: #9ca3af; font-size: 12px; display: block; margin-bottom: 2px;">E-Mail</span><a href="mailto:{{lead_email}}" style="color: ${color}; font-size: 14px; text-decoration: none;">{{lead_email}}</a></td></tr>
+              <tr><td style="padding: 8px 0; border-top: 1px solid #e5e7eb;"><span style="color: #9ca3af; font-size: 12px; display: block; margin-bottom: 2px;">Telefon</span><a href="tel:{{lead_phone}}" style="color: ${color}; font-size: 14px; text-decoration: none;">{{lead_phone}}</a></td></tr>
+              <tr><td style="padding: 8px 0; border-top: 1px solid #e5e7eb;"><span style="color: #9ca3af; font-size: 12px; display: block; margin-bottom: 2px;">Formular</span><span style="color: #111827; font-size: 14px; font-weight: 500;">{{form_name}}</span></td></tr>
+            </table>
+          </td></tr>
+        </table>
+      </td>
+    </tr>` : '';
+
+  const ratingSection = templateType === 'lead_assignment' ? `
+    <!-- Rating Section -->
+    <tr>
+      <td style="padding: 0 32px 24px;">
+        <p style="margin: 0 0 12px; color: #6b7280; font-size: 14px;">${texts.ctaText || 'Wie war das Gesprach?'}</p>
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td width="48%" style="padding-right: 6px;"><a href="{{qualified_url}}" style="display: block; text-align: center; padding: 12px 16px; background-color: ${color}; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 500; font-size: 14px;">Guter Lead</a></td>
+            <td width="48%" style="padding-left: 6px;"><a href="{{unqualified_url}}" style="display: block; text-align: center; padding: 12px 16px; background-color: #f3f4f6; color: #374151; text-decoration: none; border-radius: 6px; font-weight: 500; font-size: 14px; border: 1px solid #d1d5db;">Schlechter Lead</a></td>
+          </tr>
+        </table>
+      </td>
+    </tr>` : '';
+
+  const memberInfoSection = templateType === 'team_member_welcome' ? `
+    <!-- Account Details Card -->
+    <tr>
+      <td style="padding: 0 32px 24px;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
+          <tr><td style="padding: 16px;">
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr><td style="padding: 8px 0;"><span style="color: #9ca3af; font-size: 12px; display: block; margin-bottom: 2px;">Name</span><span style="color: #111827; font-size: 14px; font-weight: 500;">{{member_name}}</span></td></tr>
+              <tr><td style="padding: 8px 0; border-top: 1px solid #e5e7eb;"><span style="color: #9ca3af; font-size: 12px; display: block; margin-bottom: 2px;">E-Mail</span><span style="color: #111827; font-size: 14px;">{{member_email}}</span></td></tr>
+            </table>
+          </td></tr>
+        </table>
+      </td>
+    </tr>` : '';
+
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin: 0; padding: 0; background-color: #f3f4f6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f3f4f6; padding: 40px 20px;">
+    <tr><td align="center">
+      <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 560px; background-color: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e5e7eb;">
+        <!-- Header -->
+        <tr><td style="padding: 24px 32px; border-bottom: 1px solid #e5e7eb;">${headerContent}</td></tr>
+        <!-- Badge + Greeting -->
+        <tr><td style="padding: 24px 32px 16px;">
+          <span style="display: inline-block; padding: 4px 10px; background-color: ${badgeColor}; border-radius: 4px; color: ${badgeTextColor}; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">${badgeText}</span>
+          <h1 style="margin: 12px 0 0; color: #111827; font-size: 22px; font-weight: 600; line-height: 1.3;">${texts.greeting}</h1>
+        </td></tr>
+        <!-- Message -->
+        <tr><td style="padding: 0 32px 20px;"><p style="margin: 0; color: #6b7280; font-size: 15px; line-height: 1.6;">${texts.message}</p></td></tr>
+        ${leadDetailsSection}
+        ${memberInfoSection}
+        ${ratingSection}
+        <!-- Portal Link -->
+        <tr><td style="padding: 0 32px 24px;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #eff6ff; border-radius: 8px; border: 1px solid #bfdbfe;">
+            <tr><td style="padding: 16px;">
+              <p style="margin: 0 0 12px; color: #1e40af; font-size: 14px; font-weight: 500;">${templateType === 'lead_assignment' ? 'Dein Lead-Portal' : 'Dein personliches Portal'}</p>
+              <p style="margin: 0 0 16px; color: #6b7280; font-size: 13px; line-height: 1.5;">${texts.portalText || 'Hier kannst du alle Leads verwalten.'}</p>
+              <a href="{{portal_url}}" style="display: inline-block; padding: 12px 24px; background-color: ${color}; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 500; font-size: 14px;">Portal offnen</a>
+            </td></tr>
+          </table>
+        </td></tr>
+        <!-- Footer -->
+        <tr><td style="padding: 20px 32px; background-color: #f9fafb; border-top: 1px solid #e5e7eb;">
+          <p style="margin: 0; color: #9ca3af; font-size: 12px; text-align: center; line-height: 1.6;">${footerText}</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
+
+/**
+ * Get simple template texts if available
+ */
+async function getSimpleTemplateTexts(orgId: string, templateType: string): Promise<SimpleTemplateTexts | null> {
+  try {
+    const result = await queryOne<{ texts: string }>(
+      `SELECT texts FROM email_template_texts WHERE org_id = $1 AND template_type = $2`,
+      [orgId, templateType]
+    );
+    if (result) {
+      return typeof result.texts === 'string' ? JSON.parse(result.texts) : result.texts;
+    }
+  } catch {
+    // Table might not exist yet
+  }
+  return null;
+}
+
 /**
  * Get custom email template for organization or return default
  */
 async function getEmailTemplate(orgId: string): Promise<EmailTemplate> {
   try {
+    // First check for simple template texts
+    const simpleTexts = await getSimpleTemplateTexts(orgId, 'lead_assignment');
+    if (simpleTexts) {
+      const branding = await getOrgBranding(orgId);
+      return {
+        subject: simpleTexts.subject,
+        html_content: generateHtmlFromSimpleTexts(simpleTexts, branding, 'lead_assignment'),
+      };
+    }
+
+    // Fall back to old HTML templates
     const template = await queryOne<EmailTemplate>(
       `SELECT subject, html_content FROM email_templates
        WHERE org_id = $1 AND template_type = 'lead_assignment' AND is_active = true`,
@@ -657,6 +800,17 @@ interface TeamMemberWelcomeEmailParams {
  */
 async function getTeamWelcomeTemplate(orgId: string): Promise<EmailTemplate> {
   try {
+    // First check for simple template texts
+    const simpleTexts = await getSimpleTemplateTexts(orgId, 'team_member_welcome');
+    if (simpleTexts) {
+      const branding = await getOrgBranding(orgId);
+      return {
+        subject: simpleTexts.subject,
+        html_content: generateHtmlFromSimpleTexts(simpleTexts, branding, 'team_member_welcome'),
+      };
+    }
+
+    // Fall back to old HTML templates
     const template = await queryOne<EmailTemplate>(
       `SELECT subject, html_content FROM email_templates
        WHERE org_id = $1 AND template_type = 'team_member_welcome' AND is_active = true`,
