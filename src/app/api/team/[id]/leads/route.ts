@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { verifyToken } from '@/lib/auth';
+import { getFormAliasMap } from '@/lib/form-aliases';
 
 interface Lead {
     id: string;
@@ -59,7 +60,7 @@ export async function GET(
         }
 
         // Get all leads assigned to this team member
-        const leads = await query<Lead>(
+        const leadsResult = await query<Lead>(
             `SELECT l.*, CONCAT(tm.first_name, ' ', tm.last_name) as assignee_name
              FROM leads l
              LEFT JOIN team_members tm ON l.assigned_to = tm.id
@@ -67,6 +68,15 @@ export async function GET(
              ORDER BY l.created_at DESC`,
             [payload.orgId, memberId]
         );
+
+        // Apply form aliases
+        const aliasMap = await getFormAliasMap(payload.orgId);
+        const leads = (leadsResult || []).map(lead => ({
+            ...lead,
+            form_name: (lead.form_id && aliasMap.has(lead.form_id))
+                ? aliasMap.get(lead.form_id)
+                : lead.form_name,
+        }));
 
         // Get status counts for analytics
         const statusCounts = await query<StatusCount>(

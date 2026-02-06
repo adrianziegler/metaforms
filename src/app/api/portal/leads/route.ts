@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query, queryOne } from '@/lib/db';
+import { getFormAliasMap } from '@/lib/form-aliases';
 
 interface TokenData {
     team_member_id: string;
@@ -19,7 +20,8 @@ interface Lead {
     full_name: string;
     email: string;
     phone: string;
-    form_name: string;
+    form_id: string | null;
+    form_name: string | null;
     quality_status: string;
     status: string;
     notes: string;
@@ -63,12 +65,13 @@ export async function GET(request: NextRequest) {
         );
 
         // Get all leads assigned to this team member
-        const leads = await query<Lead>(`
+        const leadsResult = await query<Lead>(`
             SELECT
                 id,
                 full_name,
                 email,
                 phone,
+                form_id,
                 form_name,
                 quality_status,
                 status,
@@ -80,6 +83,15 @@ export async function GET(request: NextRequest) {
             WHERE assigned_to = $1 AND org_id = $2
             ORDER BY assigned_at DESC
         `, [tokenData.team_member_id, tokenData.org_id]);
+
+        // Apply form aliases
+        const aliasMap = await getFormAliasMap(tokenData.org_id);
+        const leads = (leadsResult || []).map(lead => ({
+            ...lead,
+            form_name: (lead.form_id && aliasMap.has(lead.form_id))
+                ? aliasMap.get(lead.form_id)
+                : lead.form_name,
+        }));
 
         // Get org branding
         const branding = await queryOne<OrgBranding>(`

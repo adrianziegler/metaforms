@@ -276,6 +276,21 @@ export async function runMigrations() {
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_auto_message_logs_lead ON auto_message_logs(lead_id)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_branding_presets_org ON branding_presets(org_id)`);
 
+    // Form aliases table (custom display names for Meta forms)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS form_aliases (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        form_id VARCHAR(255) NOT NULL,
+        original_name VARCHAR(255),
+        display_name VARCHAR(255) NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        UNIQUE(org_id, form_id)
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_form_aliases_org ON form_aliases(org_id)`);
+
     console.log('Database migrations completed successfully!');
   } catch (error) {
     console.error('Migration error:', error);

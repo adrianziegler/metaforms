@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { verifyToken } from '@/lib/auth';
+import { applyFormAliases, getFormAliasMap } from '@/lib/form-aliases';
 
 interface Lead {
     id: string;
@@ -92,14 +93,29 @@ export async function GET(request: NextRequest) {
         const total = parseInt(countResult[0]?.count || '0');
 
         // Get distinct forms for filter dropdown
-        const forms = await query<FormOption>(
+        const formsResult = await query<FormOption>(
             `SELECT DISTINCT form_id, form_name FROM leads WHERE org_id = $1 AND form_id IS NOT NULL ORDER BY form_name`,
             [payload.orgId]
         );
 
+        // Apply form aliases to leads and forms
+        const aliasMap = await getFormAliasMap(payload.orgId);
+        const leadsWithAliases = (leads || []).map(lead => ({
+            ...lead,
+            form_name: (lead.form_id && aliasMap.has(lead.form_id))
+                ? aliasMap.get(lead.form_id)
+                : lead.form_name,
+        }));
+        const formsWithAliases = (formsResult || []).map(form => ({
+            ...form,
+            form_name: aliasMap.has(form.form_id)
+                ? aliasMap.get(form.form_id)!
+                : form.form_name,
+        }));
+
         return NextResponse.json({
-            leads: leads || [],
-            forms: forms || [],
+            leads: leadsWithAliases,
+            forms: formsWithAliases,
             pagination: {
                 page,
                 limit,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { verifyToken } from '@/lib/auth';
+import { getFormAliasMap } from '@/lib/form-aliases';
 
 interface DailyStats {
     date: string;
@@ -10,6 +11,7 @@ interface DailyStats {
 }
 
 interface FormStats {
+    form_id: string | null;
     form_name: string;
     total: string;
     qualified: string;
@@ -60,17 +62,21 @@ export async function GET(request: NextRequest) {
 
         // Get per-form stats
         const formStats = await query<FormStats>(
-            `SELECT 
+            `SELECT
+        form_id,
         COALESCE(form_name, 'Unbekannt') as form_name,
         COUNT(*) as total,
         COUNT(*) FILTER (WHERE status = 'qualified') as qualified,
         ROUND(COUNT(*) FILTER (WHERE status = 'qualified')::numeric / NULLIF(COUNT(*), 0) * 100, 1) as quality_rate
-      FROM leads 
+      FROM leads
       WHERE org_id = $1
-      GROUP BY form_name
+      GROUP BY form_id, form_name
       ORDER BY total DESC`,
             [payload.orgId]
         );
+
+        // Apply form aliases
+        const aliasMap = await getFormAliasMap(payload.orgId);
 
         const overall = overallStats[0] || { total: '0', qualified: '0', unqualified: '0', signals_sent: '0' };
         const qualityRate = parseInt(overall.total) > 0
@@ -92,7 +98,9 @@ export async function GET(request: NextRequest) {
                 unqualified: parseInt(d.unqualified),
             })),
             forms: formStats.map(f => ({
-                formName: f.form_name,
+                formName: (f.form_id && aliasMap.has(f.form_id))
+                    ? aliasMap.get(f.form_id)!
+                    : f.form_name,
                 total: parseInt(f.total),
                 qualified: parseInt(f.qualified),
                 qualityRate: parseFloat(f.quality_rate) || 0,

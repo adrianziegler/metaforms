@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query, queryOne } from '@/lib/db';
 import { verifyToken } from '@/lib/auth';
+import { getFormAliasMap } from '@/lib/form-aliases';
 
 interface AutoMessageTemplate {
     id: string;
@@ -43,14 +44,29 @@ export async function GET(request: NextRequest) {
         }
 
         // Also get available forms from leads
-        const forms = await query<{ form_id: string; form_name: string }>(
+        const formsResult = await query<{ form_id: string; form_name: string }>(
             `SELECT DISTINCT form_id, form_name FROM leads
              WHERE org_id = $1 AND form_id IS NOT NULL AND form_name IS NOT NULL
              ORDER BY form_name`,
             [payload.orgId]
         );
 
-        return NextResponse.json({ templates, forms });
+        // Apply form aliases
+        const aliasMap = await getFormAliasMap(payload.orgId);
+        const templatesWithAliases = templates.map(t => ({
+            ...t,
+            form_name: (t.form_id && aliasMap.has(t.form_id))
+                ? aliasMap.get(t.form_id)
+                : t.form_name,
+        }));
+        const formsWithAliases = formsResult.map(f => ({
+            ...f,
+            form_name: aliasMap.has(f.form_id)
+                ? aliasMap.get(f.form_id)!
+                : f.form_name,
+        }));
+
+        return NextResponse.json({ templates: templatesWithAliases, forms: formsWithAliases });
     } catch (error) {
         console.error('List templates error:', error);
         return NextResponse.json({ error: 'Interner Fehler' }, { status: 500 });

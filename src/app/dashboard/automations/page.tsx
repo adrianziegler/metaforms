@@ -43,6 +43,13 @@ interface FormOption {
     form_name: string;
 }
 
+interface FormAliasEntry {
+    form_id: string;
+    original_name: string;
+    display_name: string | null;
+    alias_id: string | null;
+}
+
 interface LogEntry {
     id: string;
     type: string;
@@ -172,6 +179,11 @@ export default function AutomationsPage() {
     const [presetForm, setPresetForm] = useState({ name: '', logoUrl: '', companyName: '', primaryColor: '#0052FF', footerText: '', isDefault: false });
     const [savingPreset, setSavingPreset] = useState(false);
 
+    // Form aliases
+    const [formAliases, setFormAliases] = useState<FormAliasEntry[]>([]);
+    const [editingAliasId, setEditingAliasId] = useState<string | null>(null);
+    const [aliasInput, setAliasInput] = useState('');
+
     const fetchAll = useCallback(async () => {
         try {
             const [tRes, sRes, lRes] = await Promise.all([
@@ -205,6 +217,16 @@ export default function AutomationsPage() {
                 }
             } catch (presetsErr) {
                 console.error('Branding presets fetch error:', presetsErr);
+            }
+            // Fetch form aliases
+            try {
+                const faRes = await fetch('/api/settings/form-aliases');
+                if (faRes.ok) {
+                    const faData = await faRes.json();
+                    setFormAliases(faData.forms || []);
+                }
+            } catch (aliasErr) {
+                console.error('Form aliases fetch error:', aliasErr);
             }
         } catch (err) {
             console.error('Fetch error:', err);
@@ -344,6 +366,49 @@ export default function AutomationsPage() {
     const handleCancelPresetEdit = () => {
         setEditingPreset(null);
         setPresetForm({ name: '', logoUrl: '', companyName: '', primaryColor: '#0052FF', footerText: '', isDefault: false });
+    };
+
+    // Form alias handlers
+    const handleStartEditAlias = (formId: string, currentName: string | null) => {
+        setEditingAliasId(formId);
+        setAliasInput(currentName || '');
+    };
+
+    const handleSaveAlias = async (formId: string, originalName: string) => {
+        if (!aliasInput.trim()) {
+            // If empty, delete the alias
+            try {
+                await fetch(`/api/settings/form-aliases?formId=${formId}`, { method: 'DELETE' });
+                setFormAliases(prev => prev.map(f =>
+                    f.form_id === formId ? { ...f, display_name: null, alias_id: null } : f
+                ));
+                toast.success('Alias entfernt');
+            } catch { toast.error('Fehler'); }
+        } else {
+            try {
+                const res = await fetch('/api/settings/form-aliases', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ formId, originalName, displayName: aliasInput.trim() }),
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    setFormAliases(prev => prev.map(f =>
+                        f.form_id === formId ? { ...f, display_name: aliasInput.trim(), alias_id: data.alias?.id } : f
+                    ));
+                    toast.success('Alias gespeichert');
+                } else {
+                    toast.error('Fehler beim Speichern');
+                }
+            } catch { toast.error('Fehler'); }
+        }
+        setEditingAliasId(null);
+        setAliasInput('');
+    };
+
+    const handleCancelEditAlias = () => {
+        setEditingAliasId(null);
+        setAliasInput('');
     };
 
     const handleToggleTemplate = async (id: string, isActive: boolean) => {
@@ -994,6 +1059,93 @@ export default function AutomationsPage() {
                                 Noch keine Branding-Presets vorhanden.
                             </div>
                         )}
+                    </div>
+
+                    {/* Form Aliases */}
+                    <div className="bg-white rounded-xl border border-gray-200 p-6">
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="w-10 h-10 rounded-lg bg-orange-100 flex items-center justify-center">
+                                <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" /></svg>
+                            </div>
+                            <div>
+                                <h3 className="font-semibold text-gray-900">Formular-Namen</h3>
+                                <p className="text-sm text-gray-500">Eigene Namen fur deine Meta-Formulare vergeben</p>
+                            </div>
+                        </div>
+
+                        {formAliases.length === 0 ? (
+                            <div className="text-center py-8 text-gray-500 text-sm">
+                                <p>Noch keine Formulare vorhanden.</p>
+                                <p className="text-xs mt-1">Sobald Leads eingehen, erscheinen die Formulare hier.</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-2">
+                                {formAliases.map(form => (
+                                    <div key={form.form_id} className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-xs font-mono text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
+                                                    {form.form_id.slice(-8)}
+                                                </span>
+                                                <span className="text-sm text-gray-500">
+                                                    {form.original_name}
+                                                </span>
+                                            </div>
+                                            {editingAliasId === form.form_id ? (
+                                                <div className="flex items-center gap-2 mt-2">
+                                                    <input
+                                                        type="text"
+                                                        value={aliasInput}
+                                                        onChange={e => setAliasInput(e.target.value)}
+                                                        placeholder="Eigener Name, z.B. PKV"
+                                                        className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#0052FF] outline-none"
+                                                        autoFocus
+                                                        onKeyDown={e => {
+                                                            if (e.key === 'Enter') handleSaveAlias(form.form_id, form.original_name);
+                                                            if (e.key === 'Escape') handleCancelEditAlias();
+                                                        }}
+                                                    />
+                                                    <button
+                                                        onClick={() => handleSaveAlias(form.form_id, form.original_name)}
+                                                        className="px-3 py-1.5 bg-[#0052FF] text-white rounded-lg text-sm font-medium hover:bg-[#0047E1] transition-colors"
+                                                    >
+                                                        Speichern
+                                                    </button>
+                                                    <button
+                                                        onClick={handleCancelEditAlias}
+                                                        className="px-3 py-1.5 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
+                                                    >
+                                                        Abbrechen
+                                                    </button>
+                                                </div>
+                                            ) : form.display_name ? (
+                                                <div className="flex items-center gap-2 mt-1">
+                                                    <span className="text-sm font-medium text-gray-900">→ {form.display_name}</span>
+                                                    <span className="text-[10px] px-1.5 py-0.5 bg-green-100 text-green-700 rounded font-medium">Angepasst</span>
+                                                </div>
+                                            ) : (
+                                                <p className="text-xs text-gray-400 mt-1">Kein eigener Name vergeben</p>
+                                            )}
+                                        </div>
+                                        {editingAliasId !== form.form_id && (
+                                            <button
+                                                onClick={() => handleStartEditAlias(form.form_id, form.display_name)}
+                                                className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-gray-500 hover:text-gray-700"
+                                                title="Namen bearbeiten"
+                                            >
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                            </button>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        <div className="mt-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                            <p className="text-xs text-orange-700">
+                                <strong>Tipp:</strong> Eigene Namen werden uberall angezeigt - in der Lead-Liste, im Kanban-Board, in der Analytics und in den Automations.
+                            </p>
+                        </div>
                     </div>
                 </div>
             )}
