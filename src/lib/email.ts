@@ -151,15 +151,7 @@ const DEFAULT_TEMPLATE: EmailTemplate = {
           <!-- Header with Logo -->
           <tr>
             <td style="padding: 24px 32px; border-bottom: 1px solid #e5e7eb;">
-              <table width="100%" cellpadding="0" cellspacing="0">
-                <tr>
-                  <td>
-                    <span style="font-size: 20px; font-weight: 700; color: #111827;">outrnk<span style="color: #0052FF;">.</span></span>
-                    <span style="color: #d1d5db; margin: 0 8px;">|</span>
-                    <span style="color: #6b7280; font-size: 14px;">Leads</span>
-                  </td>
-                </tr>
-              </table>
+              {{brand_header}}
             </td>
           </tr>
 
@@ -196,13 +188,13 @@ const DEFAULT_TEMPLATE: EmailTemplate = {
                       <tr>
                         <td style="padding: 8px 0; border-top: 1px solid #e5e7eb;">
                           <span style="color: #9ca3af; font-size: 12px; display: block; margin-bottom: 2px;">E-Mail</span>
-                          <a href="mailto:{{lead_email}}" style="color: #0052FF; font-size: 14px; text-decoration: none;">{{lead_email}}</a>
+                          <a href="mailto:{{lead_email}}" style="color: {{brand_color}}; font-size: 14px; text-decoration: none;">{{lead_email}}</a>
                         </td>
                       </tr>
                       <tr>
                         <td style="padding: 8px 0; border-top: 1px solid #e5e7eb;">
                           <span style="color: #9ca3af; font-size: 12px; display: block; margin-bottom: 2px;">Telefon</span>
-                          <a href="tel:{{lead_phone}}" style="color: #0052FF; font-size: 14px; text-decoration: none;">{{lead_phone}}</a>
+                          <a href="tel:{{lead_phone}}" style="color: {{brand_color}}; font-size: 14px; text-decoration: none;">{{lead_phone}}</a>
                         </td>
                       </tr>
                       <tr>
@@ -227,7 +219,7 @@ const DEFAULT_TEMPLATE: EmailTemplate = {
               <table width="100%" cellpadding="0" cellspacing="0">
                 <tr>
                   <td width="48%" style="padding-right: 6px;">
-                    <a href="{{qualified_url}}" style="display: block; text-align: center; padding: 12px 16px; background-color: #0052FF; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 500; font-size: 14px;">
+                    <a href="{{qualified_url}}" style="display: block; text-align: center; padding: 12px 16px; background-color: {{brand_color}}; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 500; font-size: 14px;">
                       Guter Lead
                     </a>
                   </td>
@@ -250,7 +242,7 @@ const DEFAULT_TEMPLATE: EmailTemplate = {
                     <p style="margin: 0 0 12px; color: #1e40af; font-size: 14px; font-weight: 500;">
                       Alle deine Leads im Portal verwalten
                     </p>
-                    <a href="{{portal_url}}" style="display: inline-block; padding: 10px 20px; background-color: #0052FF; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 500; font-size: 14px;">
+                    <a href="{{portal_url}}" style="display: inline-block; padding: 10px 20px; background-color: {{brand_color}}; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 500; font-size: 14px;">
                       Portal öffnen
                     </a>
                   </td>
@@ -263,8 +255,7 @@ const DEFAULT_TEMPLATE: EmailTemplate = {
           <tr>
             <td style="padding: 20px 32px; background-color: #f9fafb; border-top: 1px solid #e5e7eb;">
               <p style="margin: 0; color: #9ca3af; font-size: 12px; text-align: center; line-height: 1.6;">
-                Automatisch gesendet von outrnk. Leads<br>
-                Rating-Link ist 7 Tage gültig
+                {{brand_footer}}
               </p>
             </td>
           </tr>
@@ -573,18 +564,8 @@ export async function sendLeadAssignmentEmail(params: LeadAssignmentEmailParams)
     };
 
     // Replace variables in subject and content
-    let subject = replaceTemplateVariables(template.subject, variables);
-    let htmlContent = replaceTemplateVariables(template.html_content, variables);
-
-    // Apply branding to default template (replace hardcoded values)
-    if (branding.companyName || branding.logoUrl || branding.primaryColor) {
-      htmlContent = htmlContent.replace(
-        /<span style="font-size: 20px; font-weight: 700; color: #111827;">outrnk<span style="color: #0052FF;">\.<\/span><\/span>\s*<span style="color: #d1d5db; margin: 0 8px;">\|<\/span>\s*<span style="color: #6b7280; font-size: 14px;">Leads<\/span>/g,
-        generateBrandedHeader(branding)
-      );
-      htmlContent = htmlContent.replace(/#0052FF/g, brandColor);
-      htmlContent = htmlContent.replace(/outrnk\. Leads/g, generateBrandedFooter(branding));
-    }
+    const subject = replaceTemplateVariables(template.subject, variables);
+    const htmlContent = replaceTemplateVariables(template.html_content, variables);
 
     // Determine sender name and from address
     const senderName = branding.companyName || 'outrnk Leads';
@@ -828,7 +809,7 @@ function generateHtmlFromSimpleTextsForAdminNotification(texts: SimpleTemplateTe
 
 // Default template for team member welcome emails - Outrnk UI Style (Light + Blue)
 const DEFAULT_TEAM_WELCOME_TEMPLATE: EmailTemplate = {
-  subject: 'Willkommen bei outrnk Leads!',
+  subject: 'Willkommen bei {{brand_name}}!',
   html_content: `<!DOCTYPE html>
 <html>
 <head>
@@ -844,15 +825,7 @@ const DEFAULT_TEAM_WELCOME_TEMPLATE: EmailTemplate = {
           <!-- Header with Logo -->
           <tr>
             <td style="padding: 24px 32px; border-bottom: 1px solid #e5e7eb;">
-              <table width="100%" cellpadding="0" cellspacing="0">
-                <tr>
-                  <td>
-                    <span style="font-size: 20px; font-weight: 700; color: #111827;">outrnk<span style="color: #0052FF;">.</span></span>
-                    <span style="color: #d1d5db; margin: 0 8px;">|</span>
-                    <span style="color: #6b7280; font-size: 14px;">Leads</span>
-                  </td>
-                </tr>
-              </table>
+              {{brand_header}}
             </td>
           </tr>
 
@@ -911,7 +884,7 @@ const DEFAULT_TEAM_WELCOME_TEMPLATE: EmailTemplate = {
                     <p style="margin: 0 0 16px; color: #6b7280; font-size: 13px; line-height: 1.5;">
                       Über diesen Link erreichst du jederzeit deine zugewiesenen Leads. Speichere den Link in deinen Lesezeichen.
                     </p>
-                    <a href="{{portal_url}}" style="display: inline-block; padding: 12px 24px; background-color: #0052FF; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 500; font-size: 14px;">
+                    <a href="{{portal_url}}" style="display: inline-block; padding: 12px 24px; background-color: {{brand_color}}; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 500; font-size: 14px;">
                       Portal öffnen
                     </a>
                   </td>
@@ -924,8 +897,7 @@ const DEFAULT_TEAM_WELCOME_TEMPLATE: EmailTemplate = {
           <tr>
             <td style="padding: 20px 32px; background-color: #f9fafb; border-top: 1px solid #e5e7eb;">
               <p style="margin: 0; color: #9ca3af; font-size: 12px; text-align: center; line-height: 1.6;">
-                Automatisch gesendet von outrnk. Leads<br>
-                Bewahre diesen Link sicher auf
+                {{brand_footer}}
               </p>
             </td>
           </tr>
@@ -1014,18 +986,8 @@ export async function sendTeamMemberWelcomeEmail(params: TeamMemberWelcomeEmailP
     };
 
     // Replace variables in subject and content
-    let subject = replaceTemplateVariables(template.subject, variables);
-    let htmlContent = replaceTemplateVariables(template.html_content, variables);
-
-    // Apply branding to default template (replace hardcoded values)
-    if (branding.companyName || branding.logoUrl || branding.primaryColor) {
-      htmlContent = htmlContent.replace(
-        /<span style="font-size: 20px; font-weight: 700; color: #111827;">outrnk<span style="color: #0052FF;">\.<\/span><\/span>\s*<span style="color: #d1d5db; margin: 0 8px;">\|<\/span>\s*<span style="color: #6b7280; font-size: 14px;">Leads<\/span>/g,
-        generateBrandedHeader(branding)
-      );
-      htmlContent = htmlContent.replace(/#0052FF/g, brandColor);
-      htmlContent = htmlContent.replace(/outrnk\. Leads/g, generateBrandedFooter(branding));
-    }
+    const subject = replaceTemplateVariables(template.subject, variables);
+    const htmlContent = replaceTemplateVariables(template.html_content, variables);
 
     // Determine sender name and from address
     const senderName = branding.companyName || 'outrnk Leads';
