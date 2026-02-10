@@ -190,7 +190,7 @@ async function processLead(
                         email,
                         phone,
                         formName,
-                    });
+                    }, connection.org_id);
                     console.log('[PROCESS] Admin notification sent to:', admin.email);
                 }
             }

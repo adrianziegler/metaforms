@@ -291,7 +291,7 @@ interface SimpleTemplateTexts {
 function generateHtmlFromSimpleTexts(
   texts: SimpleTemplateTexts,
   branding: OrgBranding,
-  templateType: 'lead_assignment' | 'team_member_welcome'
+  templateType: 'lead_assignment' | 'team_member_welcome' | 'new_lead_notification'
 ): string {
   const color = branding.primaryColor || '#0052FF';
   const companyName = branding.companyName || 'outrnk';
@@ -301,11 +301,11 @@ function generateHtmlFromSimpleTexts(
     ? `<img src="${branding.logoUrl}" alt="Logo" style="max-height: 36px; max-width: 180px; object-fit: contain;">`
     : `<span style="font-size: 20px; font-weight: 700; color: #111827;">${companyName}<span style="color: ${color};">.</span></span>`;
 
-  const badgeText = templateType === 'lead_assignment' ? 'Neuer Lead' : 'Willkommen';
-  const badgeColor = templateType === 'lead_assignment' ? '#dbeafe' : '#dcfce7';
-  const badgeTextColor = templateType === 'lead_assignment' ? '#1d4ed8' : '#166534';
+  const badgeText = templateType === 'lead_assignment' ? 'Neuer Lead' : templateType === 'new_lead_notification' ? 'Neuer Lead' : 'Willkommen';
+  const badgeColor = templateType === 'lead_assignment' || templateType === 'new_lead_notification' ? '#dcfce7' : '#dcfce7';
+  const badgeTextColor = templateType === 'lead_assignment' || templateType === 'new_lead_notification' ? '#166534' : '#166534';
 
-  const leadDetailsSection = templateType === 'lead_assignment' ? `
+  const leadDetailsSection = (templateType === 'lead_assignment' || templateType === 'new_lead_notification') ? `
     <!-- Lead Details Card -->
     <tr>
       <td style="padding: 0 32px 24px;">
@@ -610,57 +610,60 @@ export async function sendLeadAssignmentEmail(params: LeadAssignmentEmailParams)
 
 /**
  * Send email when new lead arrives (optional notification)
+ * Uses custom template if available, otherwise default
  */
-export async function sendNewLeadNotification(adminEmail: string, lead: LeadInfo) {
-  if (!process.env.RESEND_API_KEY) {
-    return { success: true, dev: true };
-  }
+export async function sendNewLeadNotification(adminEmail: string, lead: LeadInfo, orgId: string) {
+  const appUrl = await getAppUrl();
+  const dashboardUrl = `${appUrl}/dashboard/leads`;
 
   try {
-    const resend = getResend();
-    if (!resend) {
-      return { success: false, error: 'Resend not configured' };
+    // Get org-specific or system Resend client
+    const resendConfig = await getResendForOrg(orgId);
+    if (!resendConfig) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[DEV] Admin notification skipped - no Resend configured');
+      }
+      return { success: true, dev: true };
     }
-    const appUrl = await getAppUrl();
-    const { data, error } = await resend.emails.send({
-      from: 'outrnk Leads <noreply@leadsignal.de>',
+
+    // Get custom template or default
+    const template = await getNewLeadNotificationTemplate(orgId);
+
+    // Get org branding for customization
+    const branding = await getOrgBranding(orgId);
+    const brandColor = branding.primaryColor || '#10b981';
+
+    // Define template variables
+    const variables: Record<string, string> = {
+      '{{lead_name}}': lead.fullName || '-',
+      '{{lead_email}}': lead.email || '-',
+      '{{lead_phone}}': lead.phone || '-',
+      '{{form_name}}': lead.formName || '-',
+      '{{dashboard_url}}': dashboardUrl,
+      '{{brand_header}}': generateBrandedHeader(branding),
+      '{{brand_name}}': branding.companyName || 'outrnk. Leads',
+      '{{brand_color}}': brandColor,
+      '{{brand_footer}}': generateBrandedFooter(branding),
+    };
+
+    // Replace variables in subject and content
+    let subject = replaceTemplateVariables(template.subject, variables);
+    let htmlContent = replaceTemplateVariables(template.html_content, variables);
+
+    // Apply branding to default template (replace hardcoded values)
+    if (branding.companyName || branding.logoUrl || branding.primaryColor) {
+      htmlContent = htmlContent.replace(/#10b981/g, brandColor);
+      htmlContent = htmlContent.replace(/outrnk\. Leads/g, generateBrandedFooter(branding));
+    }
+
+    // Determine sender name and from address
+    const senderName = branding.companyName || 'outrnk Leads';
+
+    const { data, error } = await resendConfig.client.emails.send({
+      from: `${senderName} <${resendConfig.fromEmail}>`,
       to: adminEmail,
-      subject: `Neuer Lead eingegangen: ${lead.fullName || lead.email || 'Neuer Kontakt'}`,
-      html: `
-        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto;">
-          <div style="background: linear-gradient(135deg, #10b981, #059669); padding: 24px; border-radius: 12px 12px 0 0;">
-            <h1 style="color: white; margin: 0; font-size: 24px;">Neuer Lead eingegangen!</h1>
-          </div>
-          <div style="background: #f9fafb; padding: 24px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px;">
-            <div style="background: white; border-radius: 8px; padding: 16px; margin: 16px 0; border: 1px solid #e5e7eb;">
-              <table style="width: 100%; border-collapse: collapse;">
-                <tr>
-                  <td style="padding: 8px 0; color: #6b7280; width: 100px;">Name:</td>
-                  <td style="padding: 8px 0; color: #111827; font-weight: 500;">${lead.fullName || '-'}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 8px 0; color: #6b7280;">E-Mail:</td>
-                  <td style="padding: 8px 0; color: #111827;">${lead.email || '-'}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 8px 0; color: #6b7280;">Telefon:</td>
-                  <td style="padding: 8px 0; color: #111827;">${lead.phone || '-'}</td>
-                </tr>
-                ${lead.formName ? `
-                <tr>
-                  <td style="padding: 8px 0; color: #6b7280;">Formular:</td>
-                  <td style="padding: 8px 0; color: #7c3aed; font-weight: 500;">${lead.formName}</td>
-                </tr>
-                ` : ''}
-              </table>
-            </div>
-            <a href="${appUrl}/dashboard/leads"
-               style="display: inline-block; background: #10b981; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500;">
-              Leads anzeigen
-            </a>
-          </div>
-        </div>
-      `,
+      subject,
+      html: htmlContent,
     });
 
     if (error) {
@@ -673,6 +676,154 @@ export async function sendNewLeadNotification(adminEmail: string, lead: LeadInfo
     console.error('Failed to send notification:', error);
     return { success: false, error };
   }
+}
+
+// Default template for new lead notification emails (admin)
+const DEFAULT_NEW_LEAD_NOTIFICATION_TEMPLATE: EmailTemplate = {
+  subject: 'Neuer Lead eingegangen: {{lead_name}}',
+  html_content: `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; background-color: #f3f4f6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f3f4f6; padding: 40px 20px;">
+    <tr>
+      <td align="center">
+        <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 560px; background-color: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e5e7eb;">
+          <!-- Header with Logo -->
+          <tr>
+            <td style="padding: 24px 32px; border-bottom: 1px solid #e5e7eb;">
+              {{brand_header}}
+            </td>
+          </tr>
+          <!-- Badge + Greeting -->
+          <tr>
+            <td style="padding: 24px 32px 16px;">
+              <span style="display: inline-block; padding: 4px 10px; background-color: #dcfce7; border-radius: 4px; color: #166534; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Neuer Lead</span>
+              <h1 style="margin: 12px 0 0; color: #111827; font-size: 22px; font-weight: 600; line-height: 1.3;">Neuer Lead eingegangen!</h1>
+            </td>
+          </tr>
+          <!-- Message -->
+          <tr>
+            <td style="padding: 0 32px 20px;">
+              <p style="margin: 0; color: #6b7280; font-size: 15px; line-height: 1.6;">Ein neuer Lead ist eingegangen. Hier sind die Details:</p>
+            </td>
+          </tr>
+          <!-- Lead Details Card -->
+          <tr>
+            <td style="padding: 0 32px 24px;">
+              <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
+                <tr><td style="padding: 16px;">
+                  <table width="100%" cellpadding="0" cellspacing="0">
+                    <tr><td style="padding: 8px 0;"><span style="color: #9ca3af; font-size: 12px; display: block; margin-bottom: 2px;">Name</span><span style="color: #111827; font-size: 14px; font-weight: 500;">{{lead_name}}</span></td></tr>
+                    <tr><td style="padding: 8px 0; border-top: 1px solid #e5e7eb;"><span style="color: #9ca3af; font-size: 12px; display: block; margin-bottom: 2px;">E-Mail</span><a href="mailto:{{lead_email}}" style="color: #10b981; font-size: 14px; text-decoration: none;">{{lead_email}}</a></td></tr>
+                    <tr><td style="padding: 8px 0; border-top: 1px solid #e5e7eb;"><span style="color: #9ca3af; font-size: 12px; display: block; margin-bottom: 2px;">Telefon</span><a href="tel:{{lead_phone}}" style="color: #10b981; font-size: 14px; text-decoration: none;">{{lead_phone}}</a></td></tr>
+                    <tr><td style="padding: 8px 0; border-top: 1px solid #e5e7eb;"><span style="color: #9ca3af; font-size: 12px; display: block; margin-bottom: 2px;">Formular</span><span style="color: #111827; font-size: 14px; font-weight: 500;">{{form_name}}</span></td></tr>
+                  </table>
+                </td></tr>
+              </table>
+            </td>
+          </tr>
+          <!-- Dashboard Link -->
+          <tr>
+            <td style="padding: 0 32px 24px;">
+              <a href="{{dashboard_url}}" style="display: inline-block; padding: 12px 24px; background-color: #10b981; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 500; font-size: 14px;">Leads anzeigen</a>
+            </td>
+          </tr>
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 20px 32px; background-color: #f9fafb; border-top: 1px solid #e5e7eb;">
+              <p style="margin: 0; color: #9ca3af; font-size: 12px; text-align: center; line-height: 1.6;">{{brand_footer}}</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`,
+};
+
+/**
+ * Get custom new lead notification template for organization or return default
+ */
+async function getNewLeadNotificationTemplate(orgId: string): Promise<EmailTemplate> {
+  try {
+    // First check for simple template texts
+    const simpleTexts = await getSimpleTemplateTexts(orgId, 'new_lead_notification');
+    if (simpleTexts) {
+      const branding = await getOrgBranding(orgId);
+      return {
+        subject: simpleTexts.subject,
+        html_content: generateHtmlFromSimpleTextsForAdminNotification(simpleTexts, branding),
+      };
+    }
+
+    // Fall back to default template
+    return DEFAULT_NEW_LEAD_NOTIFICATION_TEMPLATE;
+  } catch {
+    return DEFAULT_NEW_LEAD_NOTIFICATION_TEMPLATE;
+  }
+}
+
+/**
+ * Generate HTML for admin notification from simple texts
+ */
+function generateHtmlFromSimpleTextsForAdminNotification(texts: SimpleTemplateTexts, branding: OrgBranding): string {
+  const color = branding.primaryColor || '#10b981';
+  const companyName = branding.companyName || 'outrnk';
+  const footerText = branding.companyName || 'outrnk. Leads';
+
+  const headerContent = branding.logoUrl
+    ? `<img src="${branding.logoUrl}" alt="Logo" style="max-height: 36px; max-width: 180px; object-fit: contain;">`
+    : `<span style="font-size: 20px; font-weight: 700; color: #111827;">${companyName}<span style="color: ${color};">.</span></span>`;
+
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin: 0; padding: 0; background-color: #f3f4f6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f3f4f6; padding: 40px 20px;">
+    <tr><td align="center">
+      <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 560px; background-color: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e5e7eb;">
+        <!-- Header -->
+        <tr><td style="padding: 24px 32px; border-bottom: 1px solid #e5e7eb;">${headerContent}</td></tr>
+        <!-- Badge + Greeting -->
+        <tr><td style="padding: 24px 32px 16px;">
+          <span style="display: inline-block; padding: 4px 10px; background-color: #dcfce7; border-radius: 4px; color: #166534; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Neuer Lead</span>
+          <h1 style="margin: 12px 0 0; color: #111827; font-size: 22px; font-weight: 600; line-height: 1.3;">${texts.greeting}</h1>
+        </td></tr>
+        <!-- Message -->
+        <tr><td style="padding: 0 32px 20px;"><p style="margin: 0; color: #6b7280; font-size: 15px; line-height: 1.6;">${texts.message}</p></td></tr>
+        <!-- Lead Details Card -->
+        <tr>
+          <td style="padding: 0 32px 24px;">
+            <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
+              <tr><td style="padding: 16px;">
+                <table width="100%" cellpadding="0" cellspacing="0">
+                  <tr><td style="padding: 8px 0;"><span style="color: #9ca3af; font-size: 12px; display: block; margin-bottom: 2px;">Name</span><span style="color: #111827; font-size: 14px; font-weight: 500;">{{lead_name}}</span></td></tr>
+                  <tr><td style="padding: 8px 0; border-top: 1px solid #e5e7eb;"><span style="color: #9ca3af; font-size: 12px; display: block; margin-bottom: 2px;">E-Mail</span><a href="mailto:{{lead_email}}" style="color: ${color}; font-size: 14px; text-decoration: none;">{{lead_email}}</a></td></tr>
+                  <tr><td style="padding: 8px 0; border-top: 1px solid #e5e7eb;"><span style="color: #9ca3af; font-size: 12px; display: block; margin-bottom: 2px;">Telefon</span><a href="tel:{{lead_phone}}" style="color: ${color}; font-size: 14px; text-decoration: none;">{{lead_phone}}</a></td></tr>
+                  <tr><td style="padding: 8px 0; border-top: 1px solid #e5e7eb;"><span style="color: #9ca3af; font-size: 12px; display: block; margin-bottom: 2px;">Formular</span><span style="color: #111827; font-size: 14px; font-weight: 500;">{{form_name}}</span></td></tr>
+                </table>
+              </td></tr>
+            </table>
+          </td>
+        </tr>
+        <!-- Dashboard Link -->
+        <tr><td style="padding: 0 32px 24px;">
+          <a href="{{dashboard_url}}" style="display: inline-block; padding: 12px 24px; background-color: ${color}; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 500; font-size: 14px;">${texts.ctaText || 'Leads anzeigen'}</a>
+        </td></tr>
+        <!-- Footer -->
+        <tr><td style="padding: 20px 32px; background-color: #f9fafb; border-top: 1px solid #e5e7eb;">
+          <p style="margin: 0; color: #9ca3af; font-size: 12px; text-align: center; line-height: 1.6;">${footerText}</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
 }
 
 // Default template for team member welcome emails - Outrnk UI Style (Light + Blue)

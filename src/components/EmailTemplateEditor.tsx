@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 
-type TemplateType = 'lead_assignment' | 'team_member_welcome';
+type TemplateType = 'lead_assignment' | 'team_member_welcome' | 'new_lead_notification';
 
 interface TemplateTexts {
     subject: string;
@@ -33,6 +33,12 @@ const DEFAULT_TEXTS: Record<TemplateType, TemplateTexts> = {
         message: 'Du wurdest als Team-Mitglied hinzugefugt. Ab jetzt kannst du Leads uber dein personliches Portal einsehen und verwalten.',
         portalText: 'Uber diesen Link erreichst du jederzeit deine zugewiesenen Leads. Speichere den Link in deinen Lesezeichen.',
     },
+    new_lead_notification: {
+        subject: 'Neuer Lead eingegangen: {{lead_name}}',
+        greeting: 'Neuer Lead eingegangen!',
+        message: 'Ein neuer Lead ist eingegangen. Hier sind die Details:',
+        ctaText: 'Leads anzeigen',
+    },
 };
 
 const TEMPLATE_INFO: Record<TemplateType, { label: string; description: string }> = {
@@ -43,6 +49,10 @@ const TEMPLATE_INFO: Record<TemplateType, { label: string; description: string }
     team_member_welcome: {
         label: 'Willkommens-E-Mail',
         description: 'Diese E-Mail geht an neue Team-Mitglieder mit ihrem Portal-Link.',
+    },
+    new_lead_notification: {
+        label: 'Admin-Benachrichtigung',
+        description: 'Diese E-Mail geht an Admins, wenn ein neuer Lead eingegangen ist.',
     },
 };
 
@@ -169,9 +179,13 @@ export default function EmailTemplateEditor() {
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                                 </svg>
-                            ) : (
+                            ) : type === 'team_member_welcome' ? (
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                                </svg>
+                            ) : (
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                                 </svg>
                             )}
                             {TEMPLATE_INFO[type].label}
@@ -212,7 +226,7 @@ export default function EmailTemplateEditor() {
                             className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#0052FF] outline-none"
                         />
                         <p className="text-[10px] text-gray-400 mt-1">
-                            Variablen: {templateType === 'lead_assignment' ? '{{lead_name}}, {{assignee_name}}' : '{{member_name}}'}
+                            Variablen: {templateType === 'lead_assignment' ? '{{lead_name}}, {{assignee_name}}' : templateType === 'team_member_welcome' ? '{{member_name}}' : '{{lead_name}}'}
                         </p>
                     </div>
 
@@ -248,15 +262,29 @@ export default function EmailTemplateEditor() {
                         </div>
                     )}
 
-                    <div>
-                        <label className="text-xs font-medium text-gray-500 block mb-1">Portal-Hinweis</label>
-                        <textarea
-                            value={texts.portalText || ''}
-                            onChange={(e) => updateText('portalText', e.target.value)}
-                            rows={2}
-                            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#0052FF] outline-none resize-none"
-                        />
-                    </div>
+                    {templateType === 'new_lead_notification' && (
+                        <div>
+                            <label className="text-xs font-medium text-gray-500 block mb-1">Button-Text</label>
+                            <input
+                                type="text"
+                                value={texts.ctaText || ''}
+                                onChange={(e) => updateText('ctaText', e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#0052FF] outline-none"
+                            />
+                        </div>
+                    )}
+
+                    {templateType !== 'new_lead_notification' && (
+                        <div>
+                            <label className="text-xs font-medium text-gray-500 block mb-1">Portal-Hinweis</label>
+                            <textarea
+                                value={texts.portalText || ''}
+                                onChange={(e) => updateText('portalText', e.target.value)}
+                                rows={2}
+                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#0052FF] outline-none resize-none"
+                            />
+                        </div>
+                    )}
 
                     {/* Actions */}
                     <div className="flex items-center justify-between pt-4 border-t border-gray-200">
@@ -304,8 +332,8 @@ export default function EmailTemplateEditor() {
                             {/* Body */}
                             <div className="p-4 space-y-3">
                                 {/* Badge */}
-                                <span className="inline-block px-2 py-0.5 text-[10px] font-semibold rounded" style={{ backgroundColor: `${primaryColor}20`, color: primaryColor }}>
-                                    {templateType === 'lead_assignment' ? 'NEUER LEAD' : 'WILLKOMMEN'}
+                                <span className="inline-block px-2 py-0.5 text-[10px] font-semibold rounded" style={{ backgroundColor: templateType === 'new_lead_notification' ? '#dcfce7' : `${primaryColor}20`, color: templateType === 'new_lead_notification' ? '#166534' : primaryColor }}>
+                                    {templateType === 'lead_assignment' || templateType === 'new_lead_notification' ? 'NEUER LEAD' : 'WILLKOMMEN'}
                                 </span>
 
                                 {/* Greeting */}
@@ -320,8 +348,8 @@ export default function EmailTemplateEditor() {
                                     {texts.message}
                                 </p>
 
-                                {/* Lead Details (only for assignment) */}
-                                {templateType === 'lead_assignment' && (
+                                {/* Lead Details (for assignment and admin notification) */}
+                                {(templateType === 'lead_assignment' || templateType === 'new_lead_notification') && (
                                     <div className="bg-gray-50 rounded-lg p-3 space-y-2 border border-gray-200">
                                         <div className="flex justify-between">
                                             <span className="text-gray-400">Name</span>
@@ -329,11 +357,11 @@ export default function EmailTemplateEditor() {
                                         </div>
                                         <div className="flex justify-between border-t border-gray-200 pt-2">
                                             <span className="text-gray-400">E-Mail</span>
-                                            <span style={{ color: primaryColor }}>erika@beispiel.de</span>
+                                            <span style={{ color: templateType === 'new_lead_notification' ? '#10b981' : primaryColor }}>erika@beispiel.de</span>
                                         </div>
                                         <div className="flex justify-between border-t border-gray-200 pt-2">
                                             <span className="text-gray-400">Telefon</span>
-                                            <span style={{ color: primaryColor }}>+49 123 456789</span>
+                                            <span style={{ color: templateType === 'new_lead_notification' ? '#10b981' : primaryColor }}>+49 123 456789</span>
                                         </div>
                                         <div className="flex justify-between border-t border-gray-200 pt-2">
                                             <span className="text-gray-400">Formular</span>
@@ -357,16 +385,25 @@ export default function EmailTemplateEditor() {
                                     </div>
                                 )}
 
-                                {/* Portal Box */}
-                                <div className="rounded-lg p-3 border" style={{ backgroundColor: `${primaryColor}10`, borderColor: `${primaryColor}30` }}>
-                                    <p className="font-medium text-[11px] mb-2" style={{ color: primaryColor }}>
-                                        {templateType === 'lead_assignment' ? 'Dein Lead-Portal' : 'Dein personliches Portal'}
-                                    </p>
-                                    <p className="text-gray-600 mb-2">{texts.portalText}</p>
-                                    <span className="inline-block px-3 py-1.5 text-white rounded text-[10px] font-medium" style={{ backgroundColor: primaryColor }}>
-                                        Portal offnen
+                                {/* Portal Box (not for admin notification) */}
+                                {templateType !== 'new_lead_notification' && (
+                                    <div className="rounded-lg p-3 border" style={{ backgroundColor: `${primaryColor}10`, borderColor: `${primaryColor}30` }}>
+                                        <p className="font-medium text-[11px] mb-2" style={{ color: primaryColor }}>
+                                            {templateType === 'lead_assignment' ? 'Dein Lead-Portal' : 'Dein personliches Portal'}
+                                        </p>
+                                        <p className="text-gray-600 mb-2">{texts.portalText}</p>
+                                        <span className="inline-block px-3 py-1.5 text-white rounded text-[10px] font-medium" style={{ backgroundColor: primaryColor }}>
+                                            Portal offnen
+                                        </span>
+                                    </div>
+                                )}
+
+                                {/* Dashboard Button (only for admin notification) */}
+                                {templateType === 'new_lead_notification' && (
+                                    <span className="inline-block px-3 py-1.5 text-white rounded text-[10px] font-medium" style={{ backgroundColor: '#10b981' }}>
+                                        {texts.ctaText || 'Leads anzeigen'}
                                     </span>
-                                </div>
+                                )}
                             </div>
 
                             {/* Footer */}
