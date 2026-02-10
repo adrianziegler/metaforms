@@ -392,10 +392,12 @@ async function getSimpleTemplateTexts(orgId: string, templateType: string): Prom
       [orgId, templateType]
     );
     if (result) {
+      console.log(`[EMAIL] Found custom template for org ${orgId}, type ${templateType}`);
       return typeof result.texts === 'string' ? JSON.parse(result.texts) : result.texts;
     }
-  } catch {
-    // Table might not exist yet
+    console.log(`[EMAIL] No custom template found for org ${orgId}, type ${templateType}`);
+  } catch (error) {
+    console.error(`[EMAIL] Error loading template for org ${orgId}, type ${templateType}:`, error);
   }
   return null;
 }

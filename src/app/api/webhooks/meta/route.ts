@@ -175,13 +175,21 @@ async function processLead(
                 [connection.org_id]
             );
 
+            console.log('[PROCESS] Org notification settings:', { orgId: connection.org_id, notify_new_lead: orgSettings?.notify_new_lead });
+
             // Default to true if column doesn't exist or is null
             if (orgSettings?.notify_new_lead !== false) {
-                // Get admin users for this org
+                // Get admin users for this org (admin role OR first registered user)
                 const admins = await query<{ email: string }>(
-                    "SELECT email FROM users WHERE org_id = $1 AND role = 'admin'",
+                    `SELECT DISTINCT email FROM users WHERE org_id = $1 AND (role = 'admin' OR id = (SELECT id FROM users WHERE org_id = $1 ORDER BY created_at ASC LIMIT 1))`,
                     [connection.org_id]
                 );
+
+                console.log('[PROCESS] Found admins to notify:', admins.length, admins.map(a => a.email));
+
+                if (admins.length === 0) {
+                    console.warn('[PROCESS] No admins found for org', connection.org_id);
+                }
 
                 for (const admin of admins) {
                     await sendNewLeadNotification(admin.email, {
@@ -193,6 +201,8 @@ async function processLead(
                     }, connection.org_id);
                     console.log('[PROCESS] Admin notification sent to:', admin.email);
                 }
+            } else {
+                console.log('[PROCESS] Admin notifications disabled for org', connection.org_id);
             }
         } catch (notifyError) {
             console.error('Admin notification failed (non-blocking):', notifyError);
