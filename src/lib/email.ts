@@ -74,6 +74,7 @@ interface LeadAssignmentEmailParams {
   formName?: string;
   orgId: string; // Added for custom templates
   teamMemberId?: string; // For portal link
+  rawData?: Record<string, string>; // All form field answers
 }
 
 interface EmailTemplate {
@@ -203,6 +204,7 @@ const DEFAULT_TEMPLATE: EmailTemplate = {
                           <span style="color: #111827; font-size: 14px; font-weight: 500;">{{form_name}}</span>
                         </td>
                       </tr>
+                      {{lead_details}}
                     </table>
                   </td>
                 </tr>
@@ -307,6 +309,7 @@ function generateHtmlFromSimpleTexts(
               <tr><td style="padding: 8px 0; border-top: 1px solid #e5e7eb;"><span style="color: #9ca3af; font-size: 12px; display: block; margin-bottom: 2px;">E-Mail</span><a href="mailto:{{lead_email}}" style="color: ${color}; font-size: 14px; text-decoration: none;">{{lead_email}}</a></td></tr>
               <tr><td style="padding: 8px 0; border-top: 1px solid #e5e7eb;"><span style="color: #9ca3af; font-size: 12px; display: block; margin-bottom: 2px;">Telefon</span><a href="tel:{{lead_phone}}" style="color: ${color}; font-size: 14px; text-decoration: none;">{{lead_phone}}</a></td></tr>
               <tr><td style="padding: 8px 0; border-top: 1px solid #e5e7eb;"><span style="color: #9ca3af; font-size: 12px; display: block; margin-bottom: 2px;">Formular</span><span style="color: #111827; font-size: 14px; font-weight: 500;">{{form_name}}</span></td></tr>
+              {{lead_details}}
             </table>
           </td></tr>
         </table>
@@ -430,6 +433,38 @@ async function getEmailTemplate(orgId: string): Promise<EmailTemplate> {
 }
 
 /**
+ * Generate HTML rows for additional form fields (raw_data) in email
+ */
+function generateFormFieldsHtml(
+  rawData: Record<string, string> | undefined,
+  brandColor: string
+): string {
+  if (!rawData || Object.keys(rawData).length === 0) return '';
+
+  const STANDARD_FIELDS = ['email', 'phone', 'phone_number', 'full_name', 'first_name', 'last_name'];
+  const extraFields = Object.entries(rawData)
+    .filter(([key]) => !STANDARD_FIELDS.includes(key))
+    .filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== '');
+
+  if (extraFields.length === 0) return '';
+
+  const rows = extraFields.map(([key, value]) => {
+    const label = key
+      .replace(/_/g, ' ')
+      .replace(/^question\s*(\d+)$/i, 'Frage $1')
+      .replace(/\b\w/g, l => l.toUpperCase());
+    return `<tr>
+      <td style="padding: 8px 0; border-top: 1px solid #e5e7eb;">
+        <span style="color: #9ca3af; font-size: 12px; display: block; margin-bottom: 2px;">${label}</span>
+        <span style="color: #111827; font-size: 14px; font-weight: 500;">${String(value)}</span>
+      </td>
+    </tr>`;
+  }).join('');
+
+  return rows;
+}
+
+/**
  * Replace template variables with actual values
  */
 function replaceTemplateVariables(
@@ -548,6 +583,9 @@ export async function sendLeadAssignmentEmail(params: LeadAssignmentEmailParams)
     const branding = await getOrgBranding(params.orgId);
     const brandColor = branding.primaryColor || '#0052FF';
 
+    // Generate extra form fields HTML
+    const formFieldsHtml = generateFormFieldsHtml(params.rawData, brandColor);
+
     // Define template variables
     const variables: Record<string, string> = {
       '{{assignee_name}}': params.assigneeName,
@@ -555,6 +593,7 @@ export async function sendLeadAssignmentEmail(params: LeadAssignmentEmailParams)
       '{{lead_email}}': params.leadEmail || '-',
       '{{lead_phone}}': params.leadPhone || '-',
       '{{form_name}}': params.formName || '-',
+      '{{lead_details}}': formFieldsHtml,
       '{{qualified_url}}': qualifiedUrl,
       '{{unqualified_url}}': unqualifiedUrl,
       '{{dashboard_url}}': dashboardUrl,

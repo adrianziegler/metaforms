@@ -4,6 +4,7 @@ import { query, queryOne } from '@/lib/db';
 import { verifyToken } from '@/lib/auth';
 import { sendLeadAssignmentEmail } from '@/lib/email';
 import { sendAutoMessages } from '@/lib/auto-message';
+import { getFormDisplayName } from '@/lib/form-aliases';
 
 interface AssignLeadBody {
     leadId: string;
@@ -112,6 +113,15 @@ export async function POST(request: NextRequest) {
         );
         console.log('Lead assignment updated successfully');
 
+        // Resolve form display name (use custom alias if set)
+        const displayFormName = await getFormDisplayName(payload.orgId, lead.form_id, lead.form_name);
+
+        // Parse raw_data for email
+        let rawData: Record<string, string> = {};
+        if (lead.raw_data) {
+            try { rawData = typeof lead.raw_data === 'string' ? JSON.parse(lead.raw_data) : lead.raw_data as Record<string, string>; } catch { /* */ }
+        }
+
         // Send email notification with portal link
         try {
             console.log('Sending assignment email to:', teamMember.email);
@@ -122,9 +132,10 @@ export async function POST(request: NextRequest) {
                 leadEmail: lead.email || '',
                 leadPhone: lead.phone || '',
                 leadId: lead.id,
-                formName: lead.form_name || undefined,
+                formName: displayFormName || undefined,
                 orgId: payload.orgId,
                 teamMemberId: teamMember.id,
+                rawData,
             });
             console.log('Email sent successfully');
         } catch (emailError) {
@@ -134,10 +145,6 @@ export async function POST(request: NextRequest) {
 
         // Send auto-messages triggered by lead assignment
         try {
-            let rawData: Record<string, string> = {};
-            if (lead.raw_data) {
-                try { rawData = typeof lead.raw_data === 'string' ? JSON.parse(lead.raw_data) : lead.raw_data as Record<string, string>; } catch { /* */ }
-            }
             await sendAutoMessages(payload.orgId, leadId, {
                 id: leadId,
                 email: lead.email || null,
