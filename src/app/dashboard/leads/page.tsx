@@ -52,12 +52,19 @@ export default function LeadsPage() {
     const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [totalCount, setTotalCount] = useState(0);
-    const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 12;
 
     useEffect(() => {
         fetchLeads();
         fetchTeamMembers();
+        setCurrentPage(1);
     }, [filter, formFilter]);
+
+    // Reset to page 1 when search changes
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchQuery]);
 
     const fetchTeamMembers = async () => {
         try {
@@ -128,6 +135,11 @@ export default function LeadsPage() {
     const newLeads = leads.filter(l => l.status === 'new').length;
     const qualifiedLeads = leads.filter(l => l.status === 'qualified' || l.status === 'won').length;
     const unqualifiedLeads = leads.filter(l => l.status === 'unqualified' || l.status === 'lost').length;
+
+    // Pagination
+    const totalPages = Math.ceil(filteredLeads.length / itemsPerPage);
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const paginatedLeads = filteredLeads.slice(startIndex, startIndex + itemsPerPage);
 
     return (
         <div className="space-y-6">
@@ -280,7 +292,7 @@ export default function LeadsPage() {
                 </div>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {filteredLeads.map((lead) => {
+                    {paginatedLeads.map((lead) => {
                         const statusConfig = STATUS_CONFIG[lead.status] || STATUS_CONFIG.new;
                         return (
                             <div
@@ -355,6 +367,61 @@ export default function LeadsPage() {
                             </div>
                         );
                     })}
+                </div>
+            )}
+
+            {/* Pagination */}
+            {!loading && filteredLeads.length > 0 && totalPages > 1 && (
+                <div className="flex items-center justify-between bg-white rounded-xl border border-gray-200 px-4 py-3">
+                    <div className="text-sm text-gray-500">
+                        Zeige {startIndex + 1}-{Math.min(startIndex + itemsPerPage, filteredLeads.length)} von {filteredLeads.length} Leads
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                            disabled={currentPage === 1}
+                            className="px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                            Zurück
+                        </button>
+                        <div className="flex items-center gap-1">
+                            {Array.from({ length: totalPages }, (_, i) => i + 1)
+                                .filter(page => {
+                                    // Show first, last, current, and pages around current
+                                    return page === 1 ||
+                                           page === totalPages ||
+                                           Math.abs(page - currentPage) <= 1;
+                                })
+                                .map((page, idx, arr) => {
+                                    // Add ellipsis if there's a gap
+                                    const showEllipsisBefore = idx > 0 && page - arr[idx - 1] > 1;
+                                    return (
+                                        <span key={page} className="flex items-center">
+                                            {showEllipsisBefore && (
+                                                <span className="px-2 text-gray-400">...</span>
+                                            )}
+                                            <button
+                                                onClick={() => setCurrentPage(page)}
+                                                className={`w-8 h-8 text-sm font-medium rounded-lg transition-colors ${
+                                                    currentPage === page
+                                                        ? 'bg-[#0052FF] text-white'
+                                                        : 'hover:bg-gray-100 text-gray-700'
+                                                }`}
+                                            >
+                                                {page}
+                                            </button>
+                                        </span>
+                                    );
+                                })}
+                        </div>
+                        <button
+                            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                            disabled={currentPage === totalPages}
+                            className="px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                            Weiter
+                        </button>
+                    </div>
                 </div>
             )}
 
