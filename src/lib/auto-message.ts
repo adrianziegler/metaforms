@@ -262,7 +262,7 @@ async function sendAutoEmail(
 
         if (error) {
             console.error('[AUTO-EMAIL] Send error:', error);
-            await logMessage(lead.id.split('-')[0], template.id, lead.id, 'email', lead.email, subject, 'failed', JSON.stringify(error));
+            await logMessage(template.org_id, template.id, lead.id, 'email', lead.email, subject, 'failed', JSON.stringify(error));
             return false;
         }
 
