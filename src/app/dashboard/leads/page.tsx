@@ -51,6 +51,8 @@ export default function LeadsPage() {
     const [formFilter, setFormFilter] = useState<string>('');
     const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
+    const [totalCount, setTotalCount] = useState(0);
+    const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
 
     useEffect(() => {
         fetchLeads();
@@ -70,7 +72,7 @@ export default function LeadsPage() {
     const fetchLeads = async () => {
         setLoading(true);
         try {
-            let url = '/api/leads?';
+            let url = '/api/leads?limit=10000&';
             if (filter !== 'all') {
                 url += `status=${filter}&`;
             }
@@ -81,6 +83,7 @@ export default function LeadsPage() {
             const data = await res.json();
             setLeads(data.leads || []);
             setForms(data.forms || []);
+            setTotalCount(data.pagination?.total ?? (data.leads || []).length);
         } catch (error) {
             console.error('Error fetching leads:', error);
         }
@@ -121,7 +124,7 @@ export default function LeadsPage() {
     });
 
     // Stats
-    const totalLeads = leads.length;
+    const totalLeads = totalCount;
     const newLeads = leads.filter(l => l.status === 'new').length;
     const qualifiedLeads = leads.filter(l => l.status === 'qualified' || l.status === 'won').length;
     const unqualifiedLeads = leads.filter(l => l.status === 'unqualified' || l.status === 'lost').length;
