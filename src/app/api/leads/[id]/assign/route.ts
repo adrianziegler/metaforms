@@ -64,8 +64,8 @@ export async function POST(
 
         // Update lead assignment
         await query(
-            'UPDATE leads SET assigned_to = $1, assigned_at = NOW(), updated_at = NOW() WHERE id = $2',
-            [teamMemberId, leadId]
+            'UPDATE leads SET assigned_to = $1, assigned_at = NOW(), updated_at = NOW() WHERE id = $2 AND org_id = $3',
+            [teamMemberId, leadId, payload.orgId]
         );
 
         // Resolve form display name (use custom alias if set)
@@ -164,8 +164,8 @@ export async function DELETE(
 
         // Update lead to remove assignment
         await query(
-            'UPDATE leads SET assigned_to = NULL, assigned_at = NULL, updated_at = NOW() WHERE id = $1',
-            [leadId]
+            'UPDATE leads SET assigned_to = NULL, assigned_at = NULL, updated_at = NOW() WHERE id = $1 AND org_id = $2',
+            [leadId, payload.orgId]
         );
 
         return NextResponse.json({ success: true });

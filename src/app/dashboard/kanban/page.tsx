@@ -62,9 +62,9 @@ export default function KanbanPage() {
 
     const fetchLeads = async () => {
         try {
-            let url = '/api/leads';
+            let url = '/api/leads?limit=10000';
             if (formFilter) {
-                url += `?form_id=${formFilter}`;
+                url += `&form_id=${formFilter}`;
             }
             const res = await fetch(url);
             const data = await res.json();

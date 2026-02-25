@@ -53,8 +53,8 @@ export async function GET(request: NextRequest) {
 
         // Update lead status
         await query(
-            `UPDATE leads SET status = $1, rated_via = 'email', updated_at = NOW() WHERE id = $2`,
-            [rating, lead.id]
+            `UPDATE leads SET status = $1, rated_via = 'email', updated_at = NOW() WHERE id = $2 AND org_id = $3`,
+            [rating, lead.id, lead.org_id]
         );
 
         // Mark token as used
@@ -108,8 +108,8 @@ async function sendQualitySignal(lead: Lead) {
 
         // Mark as signal sent
         await query(
-            `UPDATE leads SET quality_feedback_sent = true, quality_feedback_sent_at = NOW() WHERE id = $1`,
-            [lead.id]
+            `UPDATE leads SET quality_feedback_sent = true, quality_feedback_sent_at = NOW() WHERE id = $1 AND org_id = $2`,
+            [lead.id, lead.org_id]
         );
 
         console.log('CAPI signal sent via email rating:', lead.id);

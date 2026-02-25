@@ -108,8 +108,8 @@ export async function POST(request: NextRequest) {
         // Update lead assignment
         console.log('Updating lead assignment in database...');
         await query(
-            'UPDATE leads SET assigned_to = $1, assigned_at = NOW(), updated_at = NOW() WHERE id = $2',
-            [teamMemberId, leadId]
+            'UPDATE leads SET assigned_to = $1, assigned_at = NOW(), updated_at = NOW() WHERE id = $2 AND org_id = $3',
+            [teamMemberId, leadId, payload.orgId]
         );
         console.log('Lead assignment updated successfully');
 
