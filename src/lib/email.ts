@@ -2,6 +2,52 @@ import { Resend } from 'resend';
 import crypto from 'crypto';
 import { query, queryOne } from './db';
 
+// Retry helper with exponential backoff
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  options: { maxRetries?: number; baseDelay?: number; onRetry?: (attempt: number, error: unknown) => void } = {}
+): Promise<T> {
+  const { maxRetries = 3, baseDelay = 1000, onRetry } = options;
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (attempt < maxRetries) {
+        const delay = baseDelay * Math.pow(2, attempt - 1); // 1s, 2s, 4s
+        onRetry?.(attempt, error);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+
+  throw lastError;
+}
+
+// Log email attempt to audit table (fire-and-forget)
+async function logEmailAudit(params: {
+  orgId: string;
+  emailType: string;
+  recipient: string;
+  subject: string;
+  success: boolean;
+  errorMessage?: string;
+  resendId?: string;
+}) {
+  try {
+    await query(
+      `INSERT INTO email_audit (org_id, email_type, recipient, subject, success, error_message, resend_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [params.orgId, params.emailType, params.recipient, params.subject, params.success, params.errorMessage || null, params.resendId || null]
+    );
+  } catch (e) {
+    // Table might not exist yet - don't fail the main operation
+    console.warn('[EMAIL_AUDIT] Failed to log (table may not exist):', e);
+  }
+}
+
 // System Resend client (lazy, uses env RESEND_API_KEY)
 let systemResendClient: Resend | null = null;
 function getSystemResend(): Resend | null {
@@ -637,6 +683,7 @@ export async function sendLeadAssignmentEmail(params: LeadAssignmentEmailParams)
 export async function sendNewLeadNotification(adminEmail: string, lead: LeadInfo, orgId: string) {
   const appUrl = await getAppUrl();
   const dashboardUrl = `${appUrl}/dashboard/leads`;
+  let subject = '';
 
   try {
     // Get org-specific or system Resend client
@@ -669,7 +716,7 @@ export async function sendNewLeadNotification(adminEmail: string, lead: LeadInfo
     };
 
     // Replace variables in subject and content
-    let subject = replaceTemplateVariables(template.subject, variables);
+    subject = replaceTemplateVariables(template.subject, variables);
     let htmlContent = replaceTemplateVariables(template.html_content, variables);
 
     // Apply branding to default template (replace hardcoded values)
@@ -681,22 +728,61 @@ export async function sendNewLeadNotification(adminEmail: string, lead: LeadInfo
     // Determine sender name and from address
     const senderName = branding.companyName || 'outrnk Leads';
 
-    const { data, error } = await resendConfig.client.emails.send({
-      from: `${senderName} <${resendConfig.fromEmail}>`,
-      to: adminEmail,
+    // Send with retry logic (3 attempts with exponential backoff)
+    let retryCount = 0;
+    const result = await withRetry(
+      async () => {
+        const { data, error } = await resendConfig.client.emails.send({
+          from: `${senderName} <${resendConfig.fromEmail}>`,
+          to: adminEmail,
+          subject,
+          html: htmlContent,
+        });
+
+        if (error) {
+          // Throw to trigger retry
+          throw new Error(typeof error === 'object' ? JSON.stringify(error) : String(error));
+        }
+
+        return data;
+      },
+      {
+        maxRetries: 3,
+        baseDelay: 1000,
+        onRetry: (attempt, error) => {
+          retryCount = attempt;
+          console.warn(`[NEW_LEAD_NOTIFICATION] Retry ${attempt}/3 for ${adminEmail}:`, error);
+        },
+      }
+    );
+
+    // Log success
+    console.log(`[NEW_LEAD_NOTIFICATION] Sent to ${adminEmail} (retries: ${retryCount}, resend_id: ${result?.id})`);
+    await logEmailAudit({
+      orgId,
+      emailType: 'new_lead_notification',
+      recipient: adminEmail,
       subject,
-      html: htmlContent,
+      success: true,
+      resendId: result?.id,
     });
 
-    if (error) {
-      console.error('Resend error:', error);
-      return { success: false, error };
-    }
-
-    return { success: true, data };
+    return { success: true, data: result };
   } catch (error) {
-    console.error('Failed to send notification:', error);
-    return { success: false, error };
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(`[NEW_LEAD_NOTIFICATION] FAILED after 3 retries for ${adminEmail}:`, errorMessage);
+
+    // Log failure
+    await logEmailAudit({
+      orgId,
+      emailType: 'new_lead_notification',
+      recipient: adminEmail,
+      subject,
+      success: false,
+      errorMessage,
+    });
+
+    return { success: false, error: errorMessage };
   }
 }
 

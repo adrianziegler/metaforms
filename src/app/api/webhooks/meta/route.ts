@@ -191,16 +191,26 @@ async function processLead(
                     console.warn('[PROCESS] No admins found for org', connection.org_id);
                 }
 
+                let successCount = 0;
+                let failCount = 0;
                 for (const admin of admins) {
-                    await sendNewLeadNotification(admin.email, {
+                    const result = await sendNewLeadNotification(admin.email, {
                         id: leadgenId,
                         fullName,
                         email,
                         phone,
                         formName,
                     }, connection.org_id);
-                    console.log('[PROCESS] Admin notification sent to:', admin.email);
+
+                    if (result.success) {
+                        successCount++;
+                        console.log('[PROCESS] Admin notification SUCCESS:', admin.email);
+                    } else {
+                        failCount++;
+                        console.error('[PROCESS] Admin notification FAILED:', admin.email, result.error);
+                    }
                 }
+                console.log(`[PROCESS] Admin notifications complete: ${successCount} sent, ${failCount} failed`);
             } else {
                 console.log('[PROCESS] Admin notifications disabled for org', connection.org_id);
             }
