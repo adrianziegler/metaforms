@@ -17,6 +17,16 @@ export default function SettingsPage() {
     const [webhookUrl, setWebhookUrl] = useState('');
     const [activeTab, setActiveTab] = useState<'general' | 'branding' | 'meta-guide'>('general');
     const [notifyNewLead, setNotifyNewLead] = useState(true);
+    const [emailLogs, setEmailLogs] = useState<Array<{
+        id: string;
+        recipient: string;
+        subject: string;
+        success: boolean;
+        error_message: string | null;
+        created_at: string;
+    }>>([]);
+    const [showEmailLogs, setShowEmailLogs] = useState(false);
+    const [emailLogsLoading, setEmailLogsLoading] = useState(false);
 
     useEffect(() => {
         if (typeof window !== 'undefined') {
@@ -35,6 +45,29 @@ export default function SettingsPage() {
             }
         } catch (error) {
             console.error('Error fetching notification settings:', error);
+        }
+    };
+
+    const fetchEmailLogs = async () => {
+        setEmailLogsLoading(true);
+        try {
+            const res = await fetch('/api/settings/email-logs?limit=20');
+            if (res.ok) {
+                const data = await res.json();
+                setEmailLogs(data.logs || []);
+            }
+        } catch (error) {
+            console.error('Error fetching email logs:', error);
+        } finally {
+            setEmailLogsLoading(false);
+        }
+    };
+
+    const handleToggleEmailLogs = () => {
+        const newShow = !showEmailLogs;
+        setShowEmailLogs(newShow);
+        if (newShow && emailLogs.length === 0) {
+            fetchEmailLogs();
         }
     };
 
@@ -257,13 +290,91 @@ export default function SettingsPage() {
                                         <p className="text-sm text-gray-500">Admin wird per E-Mail informiert wenn Lead eingeht</p>
                                     </div>
                                 </div>
-                                <button
-                                    onClick={handleToggleNotifyNewLead}
-                                    className={`relative w-11 h-6 rounded-full transition-colors ${notifyNewLead ? 'bg-[#0052FF]' : 'bg-gray-300'}`}
-                                >
-                                    <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${notifyNewLead ? 'translate-x-5' : ''}`} />
-                                </button>
+                                <div className="flex items-center gap-3">
+                                    <button
+                                        onClick={handleToggleEmailLogs}
+                                        className="text-sm text-[#0052FF] font-medium hover:underline"
+                                    >
+                                        {showEmailLogs ? 'Log ausblenden' : 'Log anzeigen'}
+                                    </button>
+                                    <button
+                                        onClick={handleToggleNotifyNewLead}
+                                        className={`relative w-11 h-6 rounded-full transition-colors ${notifyNewLead ? 'bg-[#0052FF]' : 'bg-gray-300'}`}
+                                    >
+                                        <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${notifyNewLead ? 'translate-x-5' : ''}`} />
+                                    </button>
+                                </div>
                             </div>
+
+                            {/* Email Log Section */}
+                            {showEmailLogs && (
+                                <div className="px-6 pb-6 -mt-2">
+                                    <div className="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
+                                        <div className="px-4 py-3 bg-gray-100 border-b border-gray-200 flex items-center justify-between">
+                                            <span className="text-sm font-medium text-gray-700">Gesendete Admin-Benachrichtigungen</span>
+                                            <button
+                                                onClick={fetchEmailLogs}
+                                                disabled={emailLogsLoading}
+                                                className="text-xs text-[#0052FF] hover:underline disabled:opacity-50"
+                                            >
+                                                {emailLogsLoading ? 'Laden...' : 'Aktualisieren'}
+                                            </button>
+                                        </div>
+                                        {emailLogsLoading && emailLogs.length === 0 ? (
+                                            <div className="p-4 text-center text-sm text-gray-500">
+                                                Lade Logs...
+                                            </div>
+                                        ) : emailLogs.length === 0 ? (
+                                            <div className="p-4 text-center text-sm text-gray-500">
+                                                Noch keine Emails versendet
+                                            </div>
+                                        ) : (
+                                            <div className="max-h-64 overflow-y-auto">
+                                                <table className="w-full text-sm">
+                                                    <thead className="bg-gray-50 sticky top-0">
+                                                        <tr>
+                                                            <th className="text-left px-4 py-2 text-gray-600 font-medium">Zeitpunkt</th>
+                                                            <th className="text-left px-4 py-2 text-gray-600 font-medium">Empfanger</th>
+                                                            <th className="text-left px-4 py-2 text-gray-600 font-medium">Betreff</th>
+                                                            <th className="text-left px-4 py-2 text-gray-600 font-medium">Status</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-gray-200">
+                                                        {emailLogs.map((log) => (
+                                                            <tr key={log.id} className="hover:bg-gray-50">
+                                                                <td className="px-4 py-2 text-gray-600 whitespace-nowrap">
+                                                                    {new Date(log.created_at).toLocaleString('de-DE', {
+                                                                        day: '2-digit',
+                                                                        month: '2-digit',
+                                                                        year: '2-digit',
+                                                                        hour: '2-digit',
+                                                                        minute: '2-digit'
+                                                                    })}
+                                                                </td>
+                                                                <td className="px-4 py-2 text-gray-900">{log.recipient}</td>
+                                                                <td className="px-4 py-2 text-gray-600 max-w-[200px] truncate" title={log.subject}>
+                                                                    {log.subject}
+                                                                </td>
+                                                                <td className="px-4 py-2">
+                                                                    {log.success ? (
+                                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                                                            Gesendet
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800" title={log.error_message || 'Fehler'}>
+                                                                            Fehlgeschlagen
+                                                                        </span>
+                                                                    )}
+                                                                </td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Email bei Zuweisung (Mitarbeiter) */}
                             <div className="flex items-center justify-between p-6">
