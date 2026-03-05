@@ -2,6 +2,35 @@ import { Resend } from 'resend';
 import crypto from 'crypto';
 import { query, queryOne } from './db';
 
+// Generate email headers for spam compliance (List-Unsubscribe)
+function getEmailHeaders(appUrl: string, orgId: string, recipientEmail: string): Record<string, string> {
+  // One-click unsubscribe URL (RFC 8058)
+  const unsubscribeUrl = `${appUrl}/api/unsubscribe?org=${orgId}&email=${encodeURIComponent(recipientEmail)}`;
+  return {
+    'List-Unsubscribe': `<${unsubscribeUrl}>`,
+    'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+  };
+}
+
+// Generate plain text version from HTML (basic conversion for spam compliance)
+function htmlToPlainText(html: string): string {
+  return html
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<\/tr>/gi, '\n')
+    .replace(/<\/td>/gi, ' | ')
+    .replace(/<a[^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>/gi, '$2 ($1)')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\n\s*\n\s*\n/g, '\n\n')
+    .trim();
+}
+
 // Retry helper with exponential backoff
 async function withRetry<T>(
   fn: () => Promise<T>,
@@ -258,29 +287,6 @@ const DEFAULT_TEMPLATE: EmailTemplate = {
             </td>
           </tr>
 
-          <!-- Rating Section -->
-          <tr>
-            <td style="padding: 0 32px 24px;">
-              <p style="margin: 0 0 12px; color: #6b7280; font-size: 14px;">
-                Wie war das Gespräch?
-              </p>
-              <table width="100%" cellpadding="0" cellspacing="0">
-                <tr>
-                  <td width="48%" style="padding-right: 6px;">
-                    <a href="{{qualified_url}}" style="display: block; text-align: center; padding: 12px 16px; background-color: {{brand_color}}; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 500; font-size: 14px;">
-                      Guter Lead
-                    </a>
-                  </td>
-                  <td width="48%" style="padding-left: 6px;">
-                    <a href="{{unqualified_url}}" style="display: block; text-align: center; padding: 12px 16px; background-color: #f3f4f6; color: #374151; text-decoration: none; border-radius: 6px; font-weight: 500; font-size: 14px; border: 1px solid #d1d5db;">
-                      Schlechter Lead
-                    </a>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-
           <!-- Portal Link -->
           <tr>
             <td style="padding: 0 32px 24px;">
@@ -302,8 +308,11 @@ const DEFAULT_TEMPLATE: EmailTemplate = {
           <!-- Footer -->
           <tr>
             <td style="padding: 20px 32px; background-color: #f9fafb; border-top: 1px solid #e5e7eb;">
-              <p style="margin: 0; color: #9ca3af; font-size: 12px; text-align: center; line-height: 1.6;">
+              <p style="margin: 0 0 8px; color: #9ca3af; font-size: 12px; text-align: center; line-height: 1.6;">
                 {{brand_footer}}
+              </p>
+              <p style="margin: 0; color: #9ca3af; font-size: 11px; text-align: center;">
+                <a href="{{unsubscribe_url}}" style="color: #9ca3af; text-decoration: underline;">E-Mail-Benachrichtigungen verwalten</a>
               </p>
             </td>
           </tr>
@@ -362,19 +371,8 @@ function generateHtmlFromSimpleTexts(
       </td>
     </tr>` : '';
 
-  const ratingSection = templateType === 'lead_assignment' ? `
-    <!-- Rating Section -->
-    <tr>
-      <td style="padding: 0 32px 24px;">
-        <p style="margin: 0 0 12px; color: #6b7280; font-size: 14px;">${texts.ctaText || 'Wie war das Gesprach?'}</p>
-        <table width="100%" cellpadding="0" cellspacing="0">
-          <tr>
-            <td width="48%" style="padding-right: 6px;"><a href="{{qualified_url}}" style="display: block; text-align: center; padding: 12px 16px; background-color: ${color}; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 500; font-size: 14px;">Guter Lead</a></td>
-            <td width="48%" style="padding-left: 6px;"><a href="{{unqualified_url}}" style="display: block; text-align: center; padding: 12px 16px; background-color: #f3f4f6; color: #374151; text-decoration: none; border-radius: 6px; font-weight: 500; font-size: 14px; border: 1px solid #d1d5db;">Schlechter Lead</a></td>
-          </tr>
-        </table>
-      </td>
-    </tr>` : '';
+  // Rating buttons removed - they triggered spam filters
+  const ratingSection = '';
 
   const memberInfoSection = templateType === 'team_member_welcome' ? `
     <!-- Account Details Card -->
@@ -648,6 +646,7 @@ export async function sendLeadAssignmentEmail(params: LeadAssignmentEmailParams)
       '{{brand_name}}': branding.companyName || 'outrnk. Leads',
       '{{brand_color}}': brandColor,
       '{{brand_footer}}': generateBrandedFooter(branding),
+      '{{unsubscribe_url}}': `${appUrl}/api/unsubscribe?org=${params.orgId}&email=${encodeURIComponent(params.to)}`,
     };
 
     // Replace variables in subject and content
@@ -662,6 +661,8 @@ export async function sendLeadAssignmentEmail(params: LeadAssignmentEmailParams)
       to: params.to,
       subject,
       html: htmlContent,
+      text: htmlToPlainText(htmlContent),
+      headers: getEmailHeaders(appUrl, params.orgId, params.to),
     });
 
     if (error) {
@@ -737,6 +738,8 @@ export async function sendNewLeadNotification(adminEmail: string, lead: LeadInfo
           to: adminEmail,
           subject,
           html: htmlContent,
+          text: htmlToPlainText(htmlContent),
+          headers: getEmailHeaders(appUrl, orgId, adminEmail),
         });
 
         if (error) {
@@ -843,7 +846,8 @@ const DEFAULT_NEW_LEAD_NOTIFICATION_TEMPLATE: EmailTemplate = {
           <!-- Footer -->
           <tr>
             <td style="padding: 20px 32px; background-color: #f9fafb; border-top: 1px solid #e5e7eb;">
-              <p style="margin: 0; color: #9ca3af; font-size: 12px; text-align: center; line-height: 1.6;">{{brand_footer}}</p>
+              <p style="margin: 0 0 8px; color: #9ca3af; font-size: 12px; text-align: center; line-height: 1.6;">{{brand_footer}}</p>
+              <p style="margin: 0; color: #9ca3af; font-size: 11px; text-align: center;"><a href="{{unsubscribe_url}}" style="color: #9ca3af; text-decoration: underline;">E-Mail-Benachrichtigungen verwalten</a></p>
             </td>
           </tr>
         </table>
@@ -1023,8 +1027,11 @@ const DEFAULT_TEAM_WELCOME_TEMPLATE: EmailTemplate = {
           <!-- Footer -->
           <tr>
             <td style="padding: 20px 32px; background-color: #f9fafb; border-top: 1px solid #e5e7eb;">
-              <p style="margin: 0; color: #9ca3af; font-size: 12px; text-align: center; line-height: 1.6;">
+              <p style="margin: 0 0 8px; color: #9ca3af; font-size: 12px; text-align: center; line-height: 1.6;">
                 {{brand_footer}}
+              </p>
+              <p style="margin: 0; color: #9ca3af; font-size: 11px; text-align: center;">
+                <a href="{{unsubscribe_url}}" style="color: #9ca3af; text-decoration: underline;">E-Mail-Benachrichtigungen verwalten</a>
               </p>
             </td>
           </tr>
@@ -1124,6 +1131,8 @@ export async function sendTeamMemberWelcomeEmail(params: TeamMemberWelcomeEmailP
       to: params.to,
       subject,
       html: htmlContent,
+      text: htmlToPlainText(htmlContent),
+      headers: getEmailHeaders(appUrl, params.orgId, params.to),
     });
 
     if (error) {

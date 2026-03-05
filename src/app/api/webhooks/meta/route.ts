@@ -132,10 +132,28 @@ async function processLead(
             }
         }
 
-        // Extract standard fields
-        const fullName = fieldMap['full_name'] || `${fieldMap['first_name'] || ''} ${fieldMap['last_name'] || ''}`.trim();
-        const email = fieldMap['email'] || null;
-        const phone = fieldMap['phone_number'] || fieldMap['phone'] || null;
+        // Extract standard fields with support for German field names
+        const fullName = fieldMap['full_name']
+            || fieldMap['Vollständiger Name']
+            || fieldMap['vollständiger name']
+            || fieldMap['name']
+            || fieldMap['Name']
+            || `${fieldMap['first_name'] || fieldMap['Vorname'] || ''} ${fieldMap['last_name'] || fieldMap['Nachname'] || ''}`.trim();
+        const email = fieldMap['email']
+            || fieldMap['E-Mail-Adresse']
+            || fieldMap['e-mail-adresse']
+            || fieldMap['E-Mail']
+            || fieldMap['e-mail']
+            || fieldMap['Email']
+            || null;
+        const phone = fieldMap['phone_number']
+            || fieldMap['phone']
+            || fieldMap['Telefonnummer']
+            || fieldMap['telefonnummer']
+            || fieldMap['Telefon']
+            || fieldMap['Handy']
+            || fieldMap['Handynummer']
+            || null;
 
         // Insert lead into database with form info
         console.log('[PROCESS] Inserting lead into DB:', { orgId: connection.org_id, email, phone, fullName, formName });
