@@ -270,6 +270,8 @@ export async function runMigrations() {
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_email_templates_org_id ON email_templates(org_id)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_team_member_tokens_token ON team_member_tokens(token)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_team_member_tokens_member ON team_member_tokens(team_member_id)`);
+    // Partial unique index to prevent duplicate active tokens per team member (race condition fix)
+    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_team_member_tokens_active_unique ON team_member_tokens(team_member_id) WHERE is_active = true`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_lead_activities_lead_id ON lead_activities(lead_id)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_auto_message_templates_org ON auto_message_templates(org_id)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_auto_message_logs_org ON auto_message_logs(org_id)`);

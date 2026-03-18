@@ -508,16 +508,28 @@ async function getOrCreatePortalToken(teamMemberId: string, orgId: string): Prom
       return existing.token;
     }
 
-    // Create new token
+    // Use INSERT ... ON CONFLICT to avoid race condition where two concurrent
+    // requests both pass the SELECT check and try to INSERT
     const token = crypto.randomBytes(32).toString('hex');
-    await query(
+    const result = await queryOne<{ token: string }>(
       `INSERT INTO team_member_tokens (team_member_id, org_id, token, is_active)
-       VALUES ($1, $2, $3, true)`,
+       VALUES ($1, $2, $3, true)
+       ON CONFLICT (team_member_id) WHERE is_active = true
+       DO UPDATE SET team_member_id = team_member_tokens.team_member_id
+       RETURNING token`,
       [teamMemberId, orgId, token]
     );
 
-    return token;
+    return result?.token || token;
   } catch (e) {
+    // If INSERT failed, try to fetch existing token (may have been created concurrently)
+    try {
+      const fallback = await queryOne<{ token: string }>(
+        'SELECT token FROM team_member_tokens WHERE team_member_id = $1 AND is_active = true',
+        [teamMemberId]
+      );
+      if (fallback) return fallback.token;
+    } catch { /* ignore */ }
     console.error('Failed to get/create portal token:', e);
     return null;
   }
