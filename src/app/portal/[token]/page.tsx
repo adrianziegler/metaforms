@@ -637,7 +637,10 @@ function LeadDetailModal({
             parsedRawData = lead.raw_data;
         }
     }
-    const STANDARD_FIELDS = ['email', 'phone', 'phone_number', 'full_name', 'first_name', 'last_name'];
+    const STANDARD_FIELDS = ['email', 'phone', 'phone_number', 'full_name', 'first_name', 'last_name',
+        'name', 'Name', 'Email', 'E-Mail', 'E-Mail-Adresse', 'e-mail', 'e-mail-adresse',
+        'Telefonnummer', 'telefonnummer', 'Telefon', 'Handy', 'Handynummer',
+        'Vollständiger Name', 'vollständiger name', 'Vorname', 'Nachname'];
     const additionalFields = Object.entries(parsedRawData)
         .filter(([key]) => !STANDARD_FIELDS.includes(key))
         .filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== '')

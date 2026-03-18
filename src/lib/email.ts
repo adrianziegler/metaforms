@@ -2,13 +2,15 @@ import { Resend } from 'resend';
 import crypto from 'crypto';
 import { query, queryOne } from './db';
 
-// Generate email headers for spam compliance (List-Unsubscribe)
+// Generate email headers for spam compliance (List-Unsubscribe + Precedence)
 function getEmailHeaders(appUrl: string, orgId: string, recipientEmail: string): Record<string, string> {
   // One-click unsubscribe URL (RFC 8058)
   const unsubscribeUrl = `${appUrl}/api/unsubscribe?org=${orgId}&email=${encodeURIComponent(recipientEmail)}`;
   return {
     'List-Unsubscribe': `<${unsubscribeUrl}>`,
     'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+    'Precedence': 'bulk',
+    'X-Auto-Response-Suppress': 'All',
   };
 }
 
@@ -209,9 +211,9 @@ function generateBrandedFooter(branding: OrgBranding): string {
   return branding.companyName || 'outrnk. Leads';
 }
 
-// Default template for lead assignment emails - Outrnk UI Style (Light + Blue)
+// Default template for lead assignment emails - minimal, no PII to avoid spam filters
 const DEFAULT_TEMPLATE: EmailTemplate = {
-  subject: 'Neuer Lead: {{lead_name}}',
+  subject: 'Neue Lead-Zuweisung - {{form_name}}',
   html_content: `<!DOCTYPE html>
 <html>
 <head>
@@ -231,11 +233,11 @@ const DEFAULT_TEMPLATE: EmailTemplate = {
             </td>
           </tr>
 
-          <!-- Lead Badge + Name -->
+          <!-- Lead Badge -->
           <tr>
             <td style="padding: 24px 32px 16px;">
               <span style="display: inline-block; padding: 4px 10px; background-color: #dbeafe; border-radius: 4px; color: #1d4ed8; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Neuer Lead</span>
-              <h1 style="margin: 12px 0 0; color: #111827; font-size: 22px; font-weight: 600; line-height: 1.3;">{{lead_name}}</h1>
+              <h1 style="margin: 12px 0 0; color: #111827; font-size: 22px; font-weight: 600; line-height: 1.3;">Neue Lead-Zuweisung</h1>
             </td>
           </tr>
 
@@ -243,65 +245,17 @@ const DEFAULT_TEMPLATE: EmailTemplate = {
           <tr>
             <td style="padding: 0 32px 20px;">
               <p style="margin: 0; color: #6b7280; font-size: 15px; line-height: 1.6;">
-                Hallo {{assignee_name}}, dir wurde ein neuer Lead zugewiesen.
+                Hallo {{assignee_name}}, dir wurde ein neuer Lead aus dem Formular <strong>{{form_name}}</strong> zugewiesen. Alle Details findest du in deinem Portal.
               </p>
-            </td>
-          </tr>
-
-          <!-- Lead Details Card -->
-          <tr>
-            <td style="padding: 0 32px 24px;">
-              <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
-                <tr>
-                  <td style="padding: 16px;">
-                    <table width="100%" cellpadding="0" cellspacing="0">
-                      <tr>
-                        <td style="padding: 8px 0;">
-                          <span style="color: #9ca3af; font-size: 12px; display: block; margin-bottom: 2px;">Name</span>
-                          <span style="color: #111827; font-size: 14px; font-weight: 500;">{{lead_name}}</span>
-                        </td>
-                      </tr>
-                      <tr>
-                        <td style="padding: 8px 0; border-top: 1px solid #e5e7eb;">
-                          <span style="color: #9ca3af; font-size: 12px; display: block; margin-bottom: 2px;">E-Mail</span>
-                          <a href="mailto:{{lead_email}}" style="color: {{brand_color}}; font-size: 14px; text-decoration: none;">{{lead_email}}</a>
-                        </td>
-                      </tr>
-                      <tr>
-                        <td style="padding: 8px 0; border-top: 1px solid #e5e7eb;">
-                          <span style="color: #9ca3af; font-size: 12px; display: block; margin-bottom: 2px;">Telefon</span>
-                          <a href="tel:{{lead_phone}}" style="color: {{brand_color}}; font-size: 14px; text-decoration: none;">{{lead_phone}}</a>
-                        </td>
-                      </tr>
-                      <tr>
-                        <td style="padding: 8px 0; border-top: 1px solid #e5e7eb;">
-                          <span style="color: #9ca3af; font-size: 12px; display: block; margin-bottom: 2px;">Formular</span>
-                          <span style="color: #111827; font-size: 14px; font-weight: 500;">{{form_name}}</span>
-                        </td>
-                      </tr>
-                      {{lead_details}}
-                    </table>
-                  </td>
-                </tr>
-              </table>
             </td>
           </tr>
 
           <!-- Portal Link -->
           <tr>
             <td style="padding: 0 32px 24px;">
-              <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #eff6ff; border-radius: 8px; border: 1px solid #bfdbfe;">
-                <tr>
-                  <td style="padding: 16px;">
-                    <p style="margin: 0 0 12px; color: #1e40af; font-size: 14px; font-weight: 500;">
-                      Alle deine Leads im Portal verwalten
-                    </p>
-                    <a href="{{portal_url}}" style="display: inline-block; padding: 10px 20px; background-color: {{brand_color}}; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 500; font-size: 14px;">
-                      Portal öffnen
-                    </a>
-                  </td>
-                </tr>
-              </table>
+              <a href="{{portal_url}}" style="display: inline-block; padding: 12px 24px; background-color: {{brand_color}}; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 500; font-size: 14px;">
+                Lead im Portal ansehen
+              </a>
             </td>
           </tr>
 
@@ -312,7 +266,7 @@ const DEFAULT_TEMPLATE: EmailTemplate = {
                 {{brand_footer}}
               </p>
               <p style="margin: 0; color: #9ca3af; font-size: 11px; text-align: center;">
-                <a href="{{unsubscribe_url}}" style="color: #9ca3af; text-decoration: underline;">E-Mail-Benachrichtigungen verwalten</a>
+                <a href="{{unsubscribe_url}}" style="color: #9ca3af; text-decoration: underline;">Abmelden</a>
               </p>
             </td>
           </tr>
@@ -353,18 +307,15 @@ function generateHtmlFromSimpleTexts(
   const badgeColor = templateType === 'lead_assignment' || templateType === 'new_lead_notification' ? '#dcfce7' : '#dcfce7';
   const badgeTextColor = templateType === 'lead_assignment' || templateType === 'new_lead_notification' ? '#166534' : '#166534';
 
+  // No PII in emails to avoid spam filters - just show form name and link to portal
   const leadDetailsSection = (templateType === 'lead_assignment' || templateType === 'new_lead_notification') ? `
-    <!-- Lead Details Card -->
+    <!-- Lead Info (no PII) -->
     <tr>
       <td style="padding: 0 32px 24px;">
         <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
           <tr><td style="padding: 16px;">
             <table width="100%" cellpadding="0" cellspacing="0">
-              <tr><td style="padding: 8px 0;"><span style="color: #9ca3af; font-size: 12px; display: block; margin-bottom: 2px;">Name</span><span style="color: #111827; font-size: 14px; font-weight: 500;">{{lead_name}}</span></td></tr>
-              <tr><td style="padding: 8px 0; border-top: 1px solid #e5e7eb;"><span style="color: #9ca3af; font-size: 12px; display: block; margin-bottom: 2px;">E-Mail</span><a href="mailto:{{lead_email}}" style="color: ${color}; font-size: 14px; text-decoration: none;">{{lead_email}}</a></td></tr>
-              <tr><td style="padding: 8px 0; border-top: 1px solid #e5e7eb;"><span style="color: #9ca3af; font-size: 12px; display: block; margin-bottom: 2px;">Telefon</span><a href="tel:{{lead_phone}}" style="color: ${color}; font-size: 14px; text-decoration: none;">{{lead_phone}}</a></td></tr>
-              <tr><td style="padding: 8px 0; border-top: 1px solid #e5e7eb;"><span style="color: #9ca3af; font-size: 12px; display: block; margin-bottom: 2px;">Formular</span><span style="color: #111827; font-size: 14px; font-weight: 500;">{{form_name}}</span></td></tr>
-              {{lead_details}}
+              <tr><td style="padding: 8px 0;"><span style="color: #9ca3af; font-size: 12px; display: block; margin-bottom: 2px;">Formular</span><span style="color: #111827; font-size: 14px; font-weight: 500;">{{form_name}}</span></td></tr>
             </table>
           </td></tr>
         </table>
@@ -485,7 +436,12 @@ function generateFormFieldsHtml(
 ): string {
   if (!rawData || Object.keys(rawData).length === 0) return '';
 
-  const STANDARD_FIELDS = ['email', 'phone', 'phone_number', 'full_name', 'first_name', 'last_name'];
+  const STANDARD_FIELDS = [
+    'email', 'phone', 'phone_number', 'full_name', 'first_name', 'last_name',
+    'name', 'Name', 'Email', 'E-Mail', 'E-Mail-Adresse', 'e-mail', 'e-mail-adresse',
+    'Telefonnummer', 'telefonnummer', 'Telefon', 'Handy', 'Handynummer',
+    'Vollständiger Name', 'vollständiger name', 'Vorname', 'Nachname',
+  ];
   const extraFields = Object.entries(rawData)
     .filter(([key]) => !STANDARD_FIELDS.includes(key))
     .filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== '');
@@ -714,6 +670,7 @@ export async function sendNewLeadNotification(adminEmail: string, lead: LeadInfo
       '{{brand_name}}': branding.companyName || 'outrnk. Leads',
       '{{brand_color}}': brandColor,
       '{{brand_footer}}': generateBrandedFooter(branding),
+      '{{unsubscribe_url}}': `${appUrl}/api/unsubscribe?org=${orgId}&email=${encodeURIComponent(adminEmail)}`,
     };
 
     // Replace variables in subject and content
@@ -789,9 +746,9 @@ export async function sendNewLeadNotification(adminEmail: string, lead: LeadInfo
   }
 }
 
-// Default template for new lead notification emails (admin)
+// Default template for new lead notification emails (admin) - minimal, no PII
 const DEFAULT_NEW_LEAD_NOTIFICATION_TEMPLATE: EmailTemplate = {
-  subject: 'Neuer Lead eingegangen: {{lead_name}}',
+  subject: 'Neuer Lead eingegangen - {{form_name}}',
   html_content: `<!DOCTYPE html>
 <html>
 <head>
@@ -813,41 +770,26 @@ const DEFAULT_NEW_LEAD_NOTIFICATION_TEMPLATE: EmailTemplate = {
           <tr>
             <td style="padding: 24px 32px 16px;">
               <span style="display: inline-block; padding: 4px 10px; background-color: #dcfce7; border-radius: 4px; color: #166534; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Neuer Lead</span>
-              <h1 style="margin: 12px 0 0; color: #111827; font-size: 22px; font-weight: 600; line-height: 1.3;">Neuer Lead eingegangen!</h1>
+              <h1 style="margin: 12px 0 0; color: #111827; font-size: 22px; font-weight: 600; line-height: 1.3;">Neuer Lead eingegangen</h1>
             </td>
           </tr>
           <!-- Message -->
           <tr>
             <td style="padding: 0 32px 20px;">
-              <p style="margin: 0; color: #6b7280; font-size: 15px; line-height: 1.6;">Ein neuer Lead ist eingegangen. Hier sind die Details:</p>
-            </td>
-          </tr>
-          <!-- Lead Details Card -->
-          <tr>
-            <td style="padding: 0 32px 24px;">
-              <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
-                <tr><td style="padding: 16px;">
-                  <table width="100%" cellpadding="0" cellspacing="0">
-                    <tr><td style="padding: 8px 0;"><span style="color: #9ca3af; font-size: 12px; display: block; margin-bottom: 2px;">Name</span><span style="color: #111827; font-size: 14px; font-weight: 500;">{{lead_name}}</span></td></tr>
-                    <tr><td style="padding: 8px 0; border-top: 1px solid #e5e7eb;"><span style="color: #9ca3af; font-size: 12px; display: block; margin-bottom: 2px;">E-Mail</span><a href="mailto:{{lead_email}}" style="color: #10b981; font-size: 14px; text-decoration: none;">{{lead_email}}</a></td></tr>
-                    <tr><td style="padding: 8px 0; border-top: 1px solid #e5e7eb;"><span style="color: #9ca3af; font-size: 12px; display: block; margin-bottom: 2px;">Telefon</span><a href="tel:{{lead_phone}}" style="color: #10b981; font-size: 14px; text-decoration: none;">{{lead_phone}}</a></td></tr>
-                    <tr><td style="padding: 8px 0; border-top: 1px solid #e5e7eb;"><span style="color: #9ca3af; font-size: 12px; display: block; margin-bottom: 2px;">Formular</span><span style="color: #111827; font-size: 14px; font-weight: 500;">{{form_name}}</span></td></tr>
-                  </table>
-                </td></tr>
-              </table>
+              <p style="margin: 0; color: #6b7280; font-size: 15px; line-height: 1.6;">Ein neuer Lead ist über das Formular <strong>{{form_name}}</strong> eingegangen. Die Details findest du im Dashboard.</p>
             </td>
           </tr>
           <!-- Dashboard Link -->
           <tr>
             <td style="padding: 0 32px 24px;">
-              <a href="{{dashboard_url}}" style="display: inline-block; padding: 12px 24px; background-color: #10b981; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 500; font-size: 14px;">Leads anzeigen</a>
+              <a href="{{dashboard_url}}" style="display: inline-block; padding: 12px 24px; background-color: #10b981; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 500; font-size: 14px;">Im Dashboard ansehen</a>
             </td>
           </tr>
           <!-- Footer -->
           <tr>
             <td style="padding: 20px 32px; background-color: #f9fafb; border-top: 1px solid #e5e7eb;">
               <p style="margin: 0 0 8px; color: #9ca3af; font-size: 12px; text-align: center; line-height: 1.6;">{{brand_footer}}</p>
-              <p style="margin: 0; color: #9ca3af; font-size: 11px; text-align: center;"><a href="{{unsubscribe_url}}" style="color: #9ca3af; text-decoration: underline;">E-Mail-Benachrichtigungen verwalten</a></p>
+              <p style="margin: 0; color: #9ca3af; font-size: 11px; text-align: center;"><a href="{{unsubscribe_url}}" style="color: #9ca3af; text-decoration: underline;">Abmelden</a></p>
             </td>
           </tr>
         </table>
@@ -908,24 +850,10 @@ function generateHtmlFromSimpleTextsForAdminNotification(texts: SimpleTemplateTe
         </td></tr>
         <!-- Message -->
         <tr><td style="padding: 0 32px 20px;"><p style="margin: 0; color: #6b7280; font-size: 15px; line-height: 1.6;">${texts.message}</p></td></tr>
-        <!-- Lead Details Card -->
-        <tr>
-          <td style="padding: 0 32px 24px;">
-            <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
-              <tr><td style="padding: 16px;">
-                <table width="100%" cellpadding="0" cellspacing="0">
-                  <tr><td style="padding: 8px 0;"><span style="color: #9ca3af; font-size: 12px; display: block; margin-bottom: 2px;">Name</span><span style="color: #111827; font-size: 14px; font-weight: 500;">{{lead_name}}</span></td></tr>
-                  <tr><td style="padding: 8px 0; border-top: 1px solid #e5e7eb;"><span style="color: #9ca3af; font-size: 12px; display: block; margin-bottom: 2px;">E-Mail</span><a href="mailto:{{lead_email}}" style="color: ${color}; font-size: 14px; text-decoration: none;">{{lead_email}}</a></td></tr>
-                  <tr><td style="padding: 8px 0; border-top: 1px solid #e5e7eb;"><span style="color: #9ca3af; font-size: 12px; display: block; margin-bottom: 2px;">Telefon</span><a href="tel:{{lead_phone}}" style="color: ${color}; font-size: 14px; text-decoration: none;">{{lead_phone}}</a></td></tr>
-                  <tr><td style="padding: 8px 0; border-top: 1px solid #e5e7eb;"><span style="color: #9ca3af; font-size: 12px; display: block; margin-bottom: 2px;">Formular</span><span style="color: #111827; font-size: 14px; font-weight: 500;">{{form_name}}</span></td></tr>
-                </table>
-              </td></tr>
-            </table>
-          </td>
-        </tr>
+        <!-- No PII - just link to dashboard -->
         <!-- Dashboard Link -->
         <tr><td style="padding: 0 32px 24px;">
-          <a href="{{dashboard_url}}" style="display: inline-block; padding: 12px 24px; background-color: ${color}; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 500; font-size: 14px;">${texts.ctaText || 'Leads anzeigen'}</a>
+          <a href="{{dashboard_url}}" style="display: inline-block; padding: 12px 24px; background-color: ${color}; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 500; font-size: 14px;">${texts.ctaText || 'Im Dashboard ansehen'}</a>
         </td></tr>
         <!-- Footer -->
         <tr><td style="padding: 20px 32px; background-color: #f9fafb; border-top: 1px solid #e5e7eb;">

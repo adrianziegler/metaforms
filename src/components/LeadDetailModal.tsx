@@ -279,7 +279,10 @@ export default function LeadDetailModal({
             formData = lead.raw_data;
         }
     }
-    const STANDARD_FIELDS = ['full_name', 'first_name', 'last_name', 'email', 'phone', 'phone_number'];
+    const STANDARD_FIELDS = ['full_name', 'first_name', 'last_name', 'email', 'phone', 'phone_number',
+        'name', 'Name', 'Email', 'E-Mail', 'E-Mail-Adresse', 'e-mail', 'e-mail-adresse',
+        'Telefonnummer', 'telefonnummer', 'Telefon', 'Handy', 'Handynummer',
+        'Vollständiger Name', 'vollständiger name', 'Vorname', 'Nachname'];
     const extraFields = Object.entries(formData)
         .filter(([key]) => !STANDARD_FIELDS.includes(key))
         .filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== '');
