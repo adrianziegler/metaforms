@@ -61,7 +61,8 @@ function lookup(fieldMap: Record<string, string>, candidates: string[]): string 
 
 /** Last resort for the name: any field whose key mentions "name" but isn't a company or form name. */
 function fuzzyFullName(fieldMap: Record<string, string>): string | null {
-  const excluded = ['firma', 'company', 'unternehmen', 'form', 'benutzer', 'user', 'produkt'];
+  // "firm" also covers firma/firmen/firmenname
+  const excluded = ['firm', 'company', 'unternehmen', 'form', 'benutzer', 'user', 'produkt'];
   for (const [key, value] of Object.entries(fieldMap)) {
     const norm = normalizeFieldKey(key);
     if (!norm.includes('name')) continue;
