@@ -4,6 +4,7 @@ import { query, queryOne } from '@/lib/db';
 import { getLeadDetails, getFormDetails } from '@/lib/meta-api';
 import { sendAutoMessages } from '@/lib/auto-message';
 import { sendNewLeadNotification } from '@/lib/email';
+import { extractLeadFields } from '@/lib/lead-fields';
 
 interface MetaConnection {
     org_id: string;
@@ -132,28 +133,11 @@ async function processLead(
             }
         }
 
-        // Extract standard fields with support for German field names
-        const fullName = fieldMap['full_name']
-            || fieldMap['Vollständiger Name']
-            || fieldMap['vollständiger name']
-            || fieldMap['name']
-            || fieldMap['Name']
-            || `${fieldMap['first_name'] || fieldMap['Vorname'] || ''} ${fieldMap['last_name'] || fieldMap['Nachname'] || ''}`.trim();
-        const email = fieldMap['email']
-            || fieldMap['E-Mail-Adresse']
-            || fieldMap['e-mail-adresse']
-            || fieldMap['E-Mail']
-            || fieldMap['e-mail']
-            || fieldMap['Email']
-            || null;
-        const phone = fieldMap['phone_number']
-            || fieldMap['phone']
-            || fieldMap['Telefonnummer']
-            || fieldMap['telefonnummer']
-            || fieldMap['Telefon']
-            || fieldMap['Handy']
-            || fieldMap['Handynummer']
-            || null;
+        // Extract standard fields - handles German field names in any spelling
+        const { fullName, email, phone } = extractLeadFields(fieldMap);
+        if (!fullName) {
+            console.warn('[PROCESS] No name field matched for lead', leadgenId, 'keys:', Object.keys(fieldMap));
+        }
 
         // Insert lead into database with form info
         console.log('[PROCESS] Inserting lead into DB:', { orgId: connection.org_id, email, phone, fullName, formName });

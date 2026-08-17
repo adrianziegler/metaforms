@@ -2,6 +2,7 @@ import { Resend } from 'resend';
 import crypto from 'crypto';
 import { query, queryOne } from './db';
 import { getOrCreatePortalToken } from './portal-token';
+import { isStandardLeadField } from './lead-fields';
 
 // Generate email headers for spam compliance (List-Unsubscribe + Precedence)
 function getEmailHeaders(appUrl: string, orgId: string, recipientEmail: string): Record<string, string> {
@@ -437,14 +438,8 @@ function generateFormFieldsHtml(
 ): string {
   if (!rawData || Object.keys(rawData).length === 0) return '';
 
-  const STANDARD_FIELDS = [
-    'email', 'phone', 'phone_number', 'full_name', 'first_name', 'last_name',
-    'name', 'Name', 'Email', 'E-Mail', 'E-Mail-Adresse', 'e-mail', 'e-mail-adresse',
-    'Telefonnummer', 'telefonnummer', 'Telefon', 'Handy', 'Handynummer',
-    'Vollständiger Name', 'vollständiger name', 'Vorname', 'Nachname',
-  ];
   const extraFields = Object.entries(rawData)
-    .filter(([key]) => !STANDARD_FIELDS.includes(key))
+    .filter(([key]) => !isStandardLeadField(key))
     .filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== '');
 
   if (extraFields.length === 0) return '';
