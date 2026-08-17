@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query, queryOne } from '@/lib/db';
 import { verifyToken } from '@/lib/auth';
-import crypto from 'crypto';
+import { getOrCreatePortalToken } from '@/lib/portal-token';
 
 // Helper to get app URL from settings, env, or request
 async function getAppUrl(request: NextRequest): Promise<string> {
@@ -117,19 +117,11 @@ export async function POST(
             return NextResponse.json({ portalUrl, existing: true });
         }
 
-        // Generate new token using ON CONFLICT to handle race conditions
-        const newToken = crypto.randomBytes(32).toString('hex');
+        const finalToken = await getOrCreatePortalToken(memberId, payload.orgId);
+        if (!finalToken) {
+            return NextResponse.json({ error: 'Portal-Link konnte nicht erstellt werden' }, { status: 500 });
+        }
 
-        const inserted = await queryOne<{ token: string }>(
-            `INSERT INTO team_member_tokens (team_member_id, org_id, token, is_active)
-             VALUES ($1, $2, $3, true)
-             ON CONFLICT (team_member_id) WHERE is_active = true
-             DO UPDATE SET team_member_id = team_member_tokens.team_member_id
-             RETURNING token`,
-            [memberId, payload.orgId, newToken]
-        );
-
-        const finalToken = inserted?.token || newToken;
         const appUrl = await getAppUrl(request);
         const portalUrl = `${appUrl}/portal/${finalToken}`;
 

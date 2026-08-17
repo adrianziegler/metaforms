@@ -1,6 +1,7 @@
 import { Resend } from 'resend';
 import crypto from 'crypto';
 import { query, queryOne } from './db';
+import { getOrCreatePortalToken } from './portal-token';
 
 // Generate email headers for spam compliance (List-Unsubscribe + Precedence)
 function getEmailHeaders(appUrl: string, orgId: string, recipientEmail: string): Record<string, string> {
@@ -494,48 +495,6 @@ async function generateAndStoreToken(leadId: string): Promise<string> {
 }
 
 /**
- * Get or create portal token for team member
- */
-async function getOrCreatePortalToken(teamMemberId: string, orgId: string): Promise<string | null> {
-  try {
-    // Check for existing active token
-    const existing = await queryOne<{ token: string }>(
-      'SELECT token FROM team_member_tokens WHERE team_member_id = $1 AND is_active = true',
-      [teamMemberId]
-    );
-
-    if (existing) {
-      return existing.token;
-    }
-
-    // Use INSERT ... ON CONFLICT to avoid race condition where two concurrent
-    // requests both pass the SELECT check and try to INSERT
-    const token = crypto.randomBytes(32).toString('hex');
-    const result = await queryOne<{ token: string }>(
-      `INSERT INTO team_member_tokens (team_member_id, org_id, token, is_active)
-       VALUES ($1, $2, $3, true)
-       ON CONFLICT (team_member_id) WHERE is_active = true
-       DO UPDATE SET team_member_id = team_member_tokens.team_member_id
-       RETURNING token`,
-      [teamMemberId, orgId, token]
-    );
-
-    return result?.token || token;
-  } catch (e) {
-    // If INSERT failed, try to fetch existing token (may have been created concurrently)
-    try {
-      const fallback = await queryOne<{ token: string }>(
-        'SELECT token FROM team_member_tokens WHERE team_member_id = $1 AND is_active = true',
-        [teamMemberId]
-      );
-      if (fallback) return fallback.token;
-    } catch { /* ignore */ }
-    console.error('Failed to get/create portal token:', e);
-    return null;
-  }
-}
-
-/**
  * Get app URL from system settings or env
  */
 async function getAppUrl(): Promise<string> {
@@ -565,13 +524,17 @@ export async function sendLeadAssignmentEmail(params: LeadAssignmentEmailParams)
     console.error('Failed to generate rating token:', e);
   }
 
-  // Get or create portal token for team member
-  let portalUrl = `${appUrl}/dashboard/kanban`; // fallback
+  // Get or create portal token for team member.
+  // Team members have no dashboard account, so the dashboard is only a valid
+  // target when this mail goes to an org admin (no teamMemberId).
+  let portalUrl = `${appUrl}/dashboard/kanban`;
   if (params.teamMemberId) {
     const portalToken = await getOrCreatePortalToken(params.teamMemberId, params.orgId);
-    if (portalToken) {
-      portalUrl = `${appUrl}/portal/${portalToken}`;
+    if (!portalToken) {
+      console.error('Assignment email aborted - no portal token for team member', params.teamMemberId);
+      return { success: false, error: 'Portal-Link konnte nicht erstellt werden' };
     }
+    portalUrl = `${appUrl}/portal/${portalToken}`;
   }
 
   const qualifiedUrl = `${appUrl}/api/leads/rate?token=${ratingToken}&rating=qualified`;
@@ -1025,9 +988,15 @@ async function getTeamWelcomeTemplate(orgId: string): Promise<EmailTemplate> {
 export async function sendTeamMemberWelcomeEmail(params: TeamMemberWelcomeEmailParams) {
   const appUrl = await getAppUrl();
 
-  // Get or create portal token for team member
+  // Get or create portal token for team member.
+  // Without a token the welcome mail has nothing to link to - a dashboard link
+  // would only drop the new member on the login/approval screen.
   const portalToken = await getOrCreatePortalToken(params.teamMemberId, params.orgId);
-  const portalUrl = portalToken ? `${appUrl}/portal/${portalToken}` : `${appUrl}/dashboard/kanban`;
+  if (!portalToken) {
+    console.error('Welcome email aborted - no portal token for team member', params.teamMemberId);
+    return { success: false, error: 'Portal-Link konnte nicht erstellt werden' };
+  }
+  const portalUrl = `${appUrl}/portal/${portalToken}`;
 
   try {
     // Get org-specific or system Resend client

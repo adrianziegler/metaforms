@@ -169,3 +169,5 @@ CREATE INDEX IF NOT EXISTS idx_email_tokens_token ON lead_email_tokens(token);
 CREATE INDEX IF NOT EXISTS idx_email_templates_org_id ON email_templates(org_id);
 CREATE INDEX IF NOT EXISTS idx_team_member_tokens_token ON team_member_tokens(token);
 CREATE INDEX IF NOT EXISTS idx_team_member_tokens_member ON team_member_tokens(team_member_id);
+-- Partial unique index: at most one active portal token per team member (ON CONFLICT target)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_team_member_tokens_active_unique ON team_member_tokens(team_member_id) WHERE is_active = true;
